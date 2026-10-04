@@ -1,0 +1,10 @@
+name: tncr
+version: v0.1
+description: TNCR 编译器 + 运行时（规划中）
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: __BUILD_FILL__
+build:
+  entry: src/main.tncs
+  output: /bin/tncr.tncr
+  cmd: '# 规划中：tncr build src/main.tncs -o /bin/tncr.tncr'

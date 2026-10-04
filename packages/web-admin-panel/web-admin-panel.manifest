@@ -1,0 +1,10 @@
+name: web-admin-panel
+version: v0.1
+description: 官方 Web 管理面板示例
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: __BUILD_FILL__
+build:
+  entry: src/index.tncr
+  output: /bin/web-admin-panel.tncr
+  cmd: '# 由 TinyOS 自研 Web 引擎托管'

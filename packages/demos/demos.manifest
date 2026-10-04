@@ -1,0 +1,10 @@
+name: demos
+version: v0.1
+description: TinyOS Genesis 演示脚本集合（.tsh / .tncr）
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: __BUILD_FILL__
+build:
+  entry: src/
+  output: /demo/
+  cmd: '# 纯脚本包，无需编译'

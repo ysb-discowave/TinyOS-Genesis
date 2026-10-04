@@ -1,0 +1,10 @@
+name: tinysh
+version: v0.1
+description: TinyOS Genesis 默认 Shell（/bin/tinysh.tncr）
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: __BUILD_FILL__
+build:
+  entry: src/tinysh.c
+  output: /bin/tinysh.tncr
+  cmd: zig cc -std=c11 -DTINYOS_USER -o tinysh.tncr src/tinysh.c src/kernel_api_tinyos.c

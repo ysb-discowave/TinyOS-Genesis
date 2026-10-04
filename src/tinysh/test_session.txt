@@ -1,0 +1,14 @@
+help
+pwd
+cd /bin
+pwd
+ls
+sysinfo
+echo TinyOS Genesis
+# 这是一行注释，应当被忽略
+cd
+cd no_such_dir
+cat no_such_file.txt
+readdev /dev/uart 0x3F8
+badcmd
+exit
