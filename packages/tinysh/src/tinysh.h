@@ -34,12 +34,11 @@ typedef struct {
     const char *desc;     /* 简短描述 */
 } cmd_t;
 
-/* 历史记录（最多 32 条）；hist_prev/hist_next 仅在 tinysh.c 内部使用 */
+/* 历史记录（最多 32 条）；hist_prev/hist_next 供宿主后端 readline 使用 */
 void hist_init(void);
 void hist_add(const char *line);
-
-/* 行读取：TTY 下支持历史(↑/↓)与 Tab 命令名补全；非 TTY 退化为逐行读取 */
-int  read_line(char *buf, int n);
+const char *hist_prev(void);
+const char *hist_next(void);
 
 /* 命令注册表 */
 const cmd_t *cmd_find(const char *name);
@@ -48,5 +47,8 @@ const cmd_t *cmd_get(int i);
 
 /* 错误码 -> 人类可读信息 */
 const char *errmsg(int code);
+
+/* REPL 主循环（行输入来自后端 ksh_readline）*/
+int tinysh_run(void);
 
 #endif /* TINYSH_H */

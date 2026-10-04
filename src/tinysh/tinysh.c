@@ -1,15 +1,15 @@
 /* tinysh.c — TinyOS Genesis v0.1 系统默认 Shell
  *
  * 严格按《tinysh 使用手册》实现：
- *   §1 特性：单行解析、内置命令、历史(32)、Tab 命令名补全、大小写敏感、
- *            注释(#)、v0.1 不支持管道/重定向/后台
+ *   §1 特性：单行解析、内置命令、历史(32)、Tab 命令名补全（宿主端）、
+ *            大小写敏感、注释(#)、v0.1 不支持管道/重定向/后台
  *   §4 全部内置命令
  *   §5 错误码
  *   §6 REPL 主循环
- *   §7 内核 API 分组（见 kernel_api_*.c）
  *
- * 编译：默认链接 kernel_api_host.c（宿主机可运行验证）；产品构建改链
- *       kernel_api_tinyos.c（见 Makefile）。
+ * 后端无关：所有底层能力经 kernel_api.h 声明、由各后端实现
+ *   （kernel_api_host.c / kernel_api_tinyos.c）。本文件不调用任何内核符号，
+ *   也不直接触碰 TTY —— 行输入统一走 ksh_readline()。
  */
 #include "tinysh.h"
 #include "kernel_api.h"
@@ -17,6 +17,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* strtok 在裸机 shim 的 string.h 里未声明；这里补声明以消隐式声明警告。
+ * 与宿主系统 string.h 的声明签名一致，重复声明无害。 */
+char *strtok(char *s, const char *delim);
 
 /* ===================== 历史记录（最多 32 条） ===================== */
 static char g_hist[HISTORY_MAX][LINE_MAX];
@@ -33,148 +37,23 @@ void hist_add(const char *line) {
         g_hist[g_hist_len][LINE_MAX - 1] = 0;
         g_hist_len++;
     } else {
-        memmove(g_hist[0], g_hist[1], (HISTORY_MAX - 1) * LINE_MAX);
+        for (int i = 0; i < HISTORY_MAX - 1; i++)
+            memcpy(g_hist[i], g_hist[i + 1], LINE_MAX);
         strncpy(g_hist[HISTORY_MAX - 1], line, LINE_MAX - 1);
         g_hist[HISTORY_MAX - 1][LINE_MAX - 1] = 0;
     }
     g_hist_cur = g_hist_len;
 }
 
-static const char *hist_prev(void) {
+const char *hist_prev(void) {
     if (g_hist_len == 0) return NULL;
     if (g_hist_cur > 0) g_hist_cur--;
     return g_hist[g_hist_cur];
 }
-static const char *hist_next(void) {
+const char *hist_next(void) {
     if (g_hist_cur < g_hist_len - 1) g_hist_cur++;
     else g_hist_cur = g_hist_len;
     return (g_hist_cur < g_hist_len) ? g_hist[g_hist_cur] : "";
-}
-
-/* ===================== 行读取（TTY 感知） ===================== */
-#ifdef _WIN32
-#  include <conio.h>
-#  include <io.h>
-#  include <windows.h>
-static DWORD g_old_mode;
-#else
-#  include <termios.h>
-#  include <unistd.h>
-static struct termios g_old_term;
-#endif
-static int g_raw = 0;
-
-static int tty_isatty(void) {
-#ifdef _WIN32
-    return _isatty(_fileno(stdin));
-#else
-    return isatty(0);
-#endif
-}
-static void raw_on(void) {
-#ifdef _WIN32
-    HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
-    GetConsoleMode(h, &g_old_mode);
-    SetConsoleMode(h, g_old_mode & ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT));
-#else
-    if (isatty(0)) {
-        tcgetattr(0, &g_old_term);
-        struct termios t = g_old_term;
-        t.c_lflag &= ~(ICANON | ECHO);
-        tcsetattr(0, TCSANOW, &t);
-    }
-#endif
-    g_raw = 1;
-}
-static void raw_off(void) {
-#ifdef _WIN32
-    HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
-    SetConsoleMode(h, g_old_mode);
-#else
-    if (g_raw) tcsetattr(0, TCSANOW, &g_old_term);
-#endif
-    g_raw = 0;
-}
-static int raw_getch(void) {
-#ifdef _WIN32
-    return _getch();
-#else
-    return getchar();
-#endif
-}
-
-/* 用 s 替换当前已输入内容（历史翻页时调用）*/
-static void line_replace(char *buf, int *pos, const char *s) {
-    for (int i = 0; i < *pos; i++) printf("\b \b");
-    strncpy(buf, s, LINE_MAX - 1); buf[LINE_MAX - 1] = 0;
-    *pos = (int)strlen(buf);
-    fputs(buf, stdout); fflush(stdout);
-}
-
-/* Tab：仅补全命令名（v0.1 不做路径补全）*/
-static void tab_complete(char *buf, int *pos) {
-    for (int i = 0; i < *pos; i++)
-        if (buf[i] == ' ') return;   /* 已有空格 -> 不补全 */
-    int wl = *pos, n = 0; const cmd_t *first = NULL;
-    for (int i = 0; i < cmd_count(); i++) {
-        const cmd_t *c = cmd_get(i);
-        if (strncmp(c->name, buf, wl) == 0) { n++; if (!first) first = c; }
-    }
-    if (n == 1) {
-        int L = (int)strlen(first->name);
-        for (int i = wl; i < L && *pos < LINE_MAX - 1; i++) buf[(*pos)++] = first->name[i];
-        buf[*pos] = 0; fputs(first->name + wl, stdout); fflush(stdout);
-    } else if (n > 1) {
-        printf("\r\n");
-        for (int i = 0; i < cmd_count(); i++) {
-            const cmd_t *c = cmd_get(i);
-            if (strncmp(c->name, buf, wl) == 0) printf("%s ", c->name);
-        }
-        printf("\r\n%s%s", TINYSH_PROMPT, buf); fflush(stdout);
-    }
-}
-
-/* 返回读取长度；-1 表示 EOF */
-int read_line(char *buf, int n) {
-    if (!tty_isatty()) {                       /* 非交互：逐行读取（便于自动化测试）*/
-        if (!fgets(buf, n, stdin)) return -1;
-        int len = (int)strlen(buf);
-        while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r'))
-            buf[--len] = 0;
-        return len;
-    }
-    raw_on();
-    int pos = 0; buf[0] = 0;
-    for (;;) {
-        int c = raw_getch();
-        if (c == '\r' || c == '\n') { printf("\r\n"); break; }
-        if (c == 3)  { printf("^C\r\n"); pos = 0; buf[0] = 0; continue; }  /* Ctrl+C */
-        if (c == 4)  { break; }                                                 /* Ctrl+D */
-        if (c == '\b' || c == 127) {
-            if (pos > 0) { pos--; printf("\b \b"); buf[pos] = 0; }
-            continue;
-        }
-        /* 方向键：Windows=0/224 前缀；POSIX=ESC [ */
-        if (c == 0 || c == 224) {
-            int k = raw_getch();
-            if (k == 72 || k == 65) { const char *s = hist_prev(); if (s) line_replace(buf, &pos, s); }
-            else if (k == 80 || k == 66) { const char *s = hist_next(); if (s) line_replace(buf, &pos, s); }
-            continue;
-        }
-        if (c == 27) {
-            if (raw_getch() == '[') {
-                int k = raw_getch();
-                if (k == 'A') { const char *s = hist_prev(); if (s) line_replace(buf, &pos, s); }
-                else if (k == 'B') { const char *s = hist_next(); if (s) line_replace(buf, &pos, s); }
-            }
-            continue;
-        }
-        if (c == '\t') { tab_complete(buf, &pos); continue; }
-        if (c >= 32 && pos < n - 1) { buf[pos++] = (char)c; buf[pos] = 0; putchar(c); fflush(stdout); }
-    }
-    raw_off();
-    buf[pos] = 0;
-    return pos;
 }
 
 /* ===================== 错误码 ===================== */
@@ -199,13 +78,13 @@ static int cmd_help(int argc, char **argv) {
     if (argc <= 1) {
         for (int i = 0; i < cmd_count(); i++) {
             const cmd_t *c = cmd_get(i);
-            printf("  %-8s %s\n", c->name, c->desc);
+            printf("  %-9s %s\n", c->name, c->desc);
         }
         return E_OK;
     }
     const cmd_t *c = cmd_find(argv[1]);
     if (!c) return E_UNKNOWN;
-    printf("%s\n  用法: %s\n  说明: %s\n", c->name, c->usage, c->desc);
+    printf("%s\n  usage: %s\n  desc : %s\n", c->name, c->usage, c->desc);
     return E_OK;
 }
 static int cmd_version(int argc, char **argv) {
@@ -297,7 +176,7 @@ static int cmd_writedev(int argc, char **argv) {
     return hw_writedev(argv[1], addr, val);
 }
 static int cmd_echo(int argc, char **argv) {
-    for (int i = 1; i < argc; i++) { if (i > 1) putchar(' '); fputs(argv[i], stdout); }
+    for (int i = 1; i < argc; i++) { if (i > 1) printf(" "); printf("%s", argv[i]); }
     printf("\n");
     return E_OK;
 }
@@ -311,27 +190,29 @@ static int cmd_exit(int argc, char **argv) {
     g_exit = 1; return E_OK;
 }
 
-/* ===================== 命令注册表 ===================== */
+/* ===================== 命令注册表 =====================
+ * 注意：desc / usage 是会打到 VGA 文本模式（CP437 字形表）上的用户可见文案，
+ * 必须纯 ASCII —— 汉字会乱码且占 3 格把整行顶出 80 列。 */
 static const cmd_t g_cmds[] = {
-    {"help",     cmd_help,     "help [command]",            "查看命令帮助"},
-    {"version",  cmd_version,  "version",                   "查看系统版本"},
-    {"sysinfo",  cmd_sysinfo,  "sysinfo",                   "系统状态概览"},
-    {"date",     cmd_date,     "date",                      "获取系统时间戳"},
-    {"ls",       cmd_ls,       "ls [path]",                 "列出目录内容"},
-    {"cd",       cmd_cd,       "cd <target_path>",          "切换工作目录"},
-    {"pwd",      cmd_pwd,      "pwd",                       "打印当前工作目录"},
-    {"cat",      cmd_cat,      "cat <filepath>",            "读取并输出文本文件"},
-    {"mkdir",    cmd_mkdir,    "mkdir <dir_name>",          "创建单层目录"},
-    {"rm",       cmd_rm,       "rm <filepath>",             "删除普通文件"},
-    {"touch",    cmd_touch,    "touch <filename>",          "创建空文件"},
-    {"ps",       cmd_ps,       "ps",                        "查看进程列表"},
-    {"kill",     cmd_kill,     "kill <pid>",                "终止指定进程"},
-    {"devlist",  cmd_devlist,  "devlist",                   "枚举硬件设备"},
-    {"readdev",  cmd_readdev,  "readdev <dev> <addr>",      "读取硬件寄存器"},
-    {"writedev", cmd_writedev, "writedev <dev> <addr> <val>","写入硬件寄存器"},
-    {"echo",     cmd_echo,     "echo <text>",               "文本输出"},
-    {"clear",    cmd_clear,    "clear",                     "清屏"},
-    {"exit",     cmd_exit,     "exit",                      "退出 tinysh 会话"},
+    {"help",     cmd_help,     "help [command]",            "show help for all or one command"},
+    {"version",  cmd_version,  "version",                   "show system and component versions"},
+    {"sysinfo",  cmd_sysinfo,  "sysinfo",                   "show CPU, memory, uptime, processes"},
+    {"date",     cmd_date,     "date",                      "show the system timestamp"},
+    {"ls",       cmd_ls,       "ls [path]",                 "list directory contents"},
+    {"cd",       cmd_cd,       "cd <target_path>",          "change the working directory"},
+    {"pwd",      cmd_pwd,      "pwd",                       "print the working directory"},
+    {"cat",      cmd_cat,      "cat <filepath>",           "print a text file"},
+    {"mkdir",    cmd_mkdir,    "mkdir <dir_name>",          "create a directory"},
+    {"rm",       cmd_rm,       "rm <filepath>",            "remove a regular file"},
+    {"touch",    cmd_touch,    "touch <filename>",          "create an empty file"},
+    {"ps",       cmd_ps,       "ps",                        "list running processes"},
+    {"kill",     cmd_kill,     "kill <pid>",                "terminate a process by pid"},
+    {"devlist",  cmd_devlist,  "devlist",                   "list hardware devices"},
+    {"readdev",  cmd_readdev,  "readdev <dev> <addr>",      "read a hardware register"},
+    {"writedev", cmd_writedev, "writedev <dev> <addr> <val>","write a hardware register"},
+    {"echo",     cmd_echo,     "echo <text>",               "print text"},
+    {"clear",    cmd_clear,    "clear",                     "clear the screen"},
+    {"exit",     cmd_exit,     "exit",                      "leave the tinysh session"},
 };
 
 const cmd_t *cmd_find(const char *name) {
@@ -349,9 +230,10 @@ int tinysh_run(void) {
 
     char line[LINE_MAX];
     for (;;) {
-        fputs(TINYSH_PROMPT, stdout); fflush(stdout);
-        int len = read_line(line, sizeof line);
+        printf("%s", TINYSH_PROMPT);
+        int len = ksh_readline(line, sizeof line);
         if (len < 0) break;                       /* EOF */
+        line[len < (int)sizeof line ? len : (int)sizeof line - 1] = 0;
 
         char *start = line;
         while (*start == ' ' || *start == '\t') start++;
@@ -379,20 +261,3 @@ int tinysh_run(void) {
     printf("tinysh terminated\n");
     return 0;
 }
-
-/* host 构建：标准 main 入口 */
-int main(void) {
-    return tinysh_run();
-}
-
-/* TinyOS 2.0 用户态构建：TNCR 加载器入口。stdio（printf/fgets…）由
- * TNCR stdio shim 接管并映射到 tinyos_api_t->print/println/readline，
- * 因此 tinysh.c 的打印/输入逻辑无需改动即可在裸机上运行。 */
-#ifdef TINYOS_USER
-#  include "api.h"
-extern void tinysh_init_api(tinyos_api_t *api);
-void user_main(tinyos_api_t *api) {
-    tinysh_init_api(api);
-    tinysh_run();
-}
-#endif

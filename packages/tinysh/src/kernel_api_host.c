@@ -1,173 +1,264 @@
-/* kernel_api_host.c — 宿主机（开发/测试）后端
- *
- * 该后端把 fs_api / proc_api / hw_api 映射到宿主机 POSIX/Win32 调用，
- * 让 tinysh 可以在普通 PC 上编译运行、验证手册里的行为（REPL、命令、
- * 错误码）。它不依赖 TinyOS 内核，仅用于开发自测。
- *
- * 真正的产品后端见 kernel_api_tinyos.c。
- */
+/* ============================================================================
+ * kernel_api_host.c -- tinysh 的宿主机后端（gcc，标准 libc）
+ * ----------------------------------------------------------------------------
+ * 仅供离线冒烟测试：用宿主 POSIX 实现 kernel_api.h 的接口，并提供带历史/
+ * 方向键/Tab 补全的交互式 ksh_readline 与 main()。产品构建用
+ * kernel_api_tinyos.c，不链接本文件。
+ * ============================================================================ */
 #include "kernel_api.h"
 #include "tinysh.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <signal.h>
 #include <time.h>
 
+/* uname() 是 POSIX 的，MinGW / 某些沙箱 libc 没有 sys/utsname.h。
+ * 缺了就退化成只报 "host"，sysinfo 仍然可用。 */
+#if defined(__unix__) || defined(__APPLE__)
+#  include <sys/utsname.h>
+#  define HAVE_UNAME 1
+#else
+#  define HAVE_UNAME 0
+#endif
+
 #ifdef _WIN32
+#  include <conio.h>
 #  include <windows.h>
+#  include <io.h>
+#  define is_tty()    _isatty(_fileno(stdin))
+#  define get1()      _getch()
 #else
-#  include <dirent.h>
-#  include <sys/stat.h>
+#  include <termios.h>
 #  include <unistd.h>
+#  define is_tty()    isatty(0)
+#  define get1()      getchar()
 #endif
 
-/* ---------------- fs_api ---------------- */
+static fs_entry g_fs_buf[128];
+static hw_dev   g_devs[32];
 
-int fs_getcwd(char *buf, int n) {
+/* ===================== 行读取（宿主，支持历史/方向键/Tab） ===================== */
 #ifdef _WIN32
-    return GetCurrentDirectoryA((DWORD)n, buf) ? 0 : E_IO;
+static void raw_on(void) {}
+static void raw_off(void) {}
 #else
-    return getcwd(buf, (size_t)n) ? 0 : E_IO;
+static struct termios g_old;
+static int g_raw = 0;
+static void raw_on(void) {
+    if (!is_tty()) return;
+    tcgetattr(0, &g_old);
+    struct termios t = g_old;
+    t.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(0, TCSANOW, &t);
+    g_raw = 1;
+}
+static void raw_off(void) {
+    if (g_raw) { tcsetattr(0, TCSANOW, &g_old); g_raw = 0; }
+}
 #endif
+
+static void line_replace(char *buf, int *pos, const char *s) {
+    for (int i = 0; i < *pos; i++) printf("\b \b");
+    strncpy(buf, s, LINE_MAX - 1); buf[LINE_MAX - 1] = 0;
+    *pos = (int)strlen(buf);
+    fputs(buf, stdout); fflush(stdout);
 }
 
-int fs_chdir(const char *path) {
-#ifdef _WIN32
-    return SetCurrentDirectoryA(path) ? 0 : E_NOENT;
-#else
-    return chdir(path) == 0 ? 0 : E_NOENT;
-#endif
-}
-
-int fs_list(const char *path, fs_entry **out, int *count) {
-    static fs_entry arr[1024];
-    int n = 0;
-#ifdef _WIN32
-    WIN32_FIND_DATAA fd;
-    char pat[640];
-    snprintf(pat, sizeof pat, "%s/*", path);
-    HANDLE h = FindFirstFileA(pat, &fd);
-    if (h == INVALID_HANDLE_VALUE) return E_NOENT;
-    do {
-        if (!strcmp(fd.cFileName, ".") || !strcmp(fd.cFileName, "..")) continue;
-        if (n < 1024) {
-            strncpy(arr[n].name, fd.cFileName, 63); arr[n].name[63] = 0;
-            arr[n].is_dir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-            arr[n].size   = (long)fd.nFileSizeLow;
-            n++;
+static void tab_complete(char *buf, int *pos) {
+    for (int i = 0; i < *pos; i++)
+        if (buf[i] == ' ') return;
+    int wl = *pos, n = 0; const cmd_t *first = NULL;
+    for (int i = 0; i < cmd_count(); i++) {
+        const cmd_t *c = cmd_get(i);
+        if (strncmp(c->name, buf, wl) == 0) { n++; if (!first) first = c; }
+    }
+    if (n == 1) {
+        int L = (int)strlen(first->name);
+        for (int i = wl; i < L && *pos < LINE_MAX - 1; i++) buf[(*pos)++] = first->name[i];
+        buf[*pos] = 0; fputs(first->name + wl, stdout); fflush(stdout);
+    } else if (n > 1) {
+        printf("\r\n");
+        for (int i = 0; i < cmd_count(); i++) {
+            const cmd_t *c = cmd_get(i);
+            if (strncmp(c->name, buf, wl) == 0) printf("%s ", c->name);
         }
-    } while (FindNextFileA(h, &fd));
-    FindClose(h);
+        printf("\r\n%s%s", TINYSH_PROMPT, buf); fflush(stdout);
+    }
+}
+
+int ksh_readline(char *buf, int n) {
+    if (!is_tty()) {
+        if (!fgets(buf, n, stdin)) return -1;
+        int len = (int)strlen(buf);
+        while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r')) buf[--len] = 0;
+        return len;
+    }
+    raw_on();
+    int pos = 0; buf[0] = 0;
+    for (;;) {
+        int c = get1();
+#ifdef _WIN32
+        if (c == 0 || c == 224) {
+            int k = get1();
+            if (k == 72 || k == 65) { const char *s = hist_prev(); if (s) line_replace(buf, &pos, s); }
+            else if (k == 80 || k == 66) { const char *s = hist_next(); if (s) line_replace(buf, &pos, s); }
+            continue;
+        }
 #else
-    DIR *d = opendir(path);
+        if (c == 27) {
+            if (get1() == '[') {
+                int k = get1();
+                if (k == 'A') { const char *s = hist_prev(); if (s) line_replace(buf, &pos, s); }
+                else if (k == 'B') { const char *s = hist_next(); if (s) line_replace(buf, &pos, s); }
+            }
+            continue;
+        }
+#endif
+        if (c == '\r' || c == '\n') { printf("\r\n"); break; }
+        if (c == 3)  { printf("^C\r\n"); pos = 0; buf[0] = 0; continue; }
+        if (c == 4)  { break; }
+        if (c == '\b' || c == 127) {
+            if (pos > 0) { pos--; printf("\b \b"); }
+            continue;
+        }
+        if (c == '\t') { tab_complete(buf, &pos); continue; }
+        if (c >= 32 && pos < n - 1) { buf[pos++] = (char)c; buf[pos] = 0; putchar(c); fflush(stdout); }
+    }
+    raw_off();
+    buf[pos] = 0;
+    return pos;
+}
+
+/* ===================== 系统信息 ===================== */
+void sys_version(char *buf, int n) {
+    snprintf(buf, n, "tinysh v0.1 (host build)");
+}
+void sys_sysinfo(char *buf, int n) {
+#if HAVE_UNAME
+    struct utsname u;
+    if (uname(&u) != 0) { snprintf(buf, n, "host\n"); return; }
+    snprintf(buf, n, "Host: %s %s\n", u.sysname, u.machine);
+#else
+    snprintf(buf, n, "Host: (uname unavailable)\n");
+#endif
+}
+void sys_date(char *buf, int n) {
+    time_t t = time(0);
+    struct tm *tm = localtime(&t);
+    strftime(buf, n, "%Y-%m-%d %H:%M:%S (host)\n", tm);
+}
+
+/* ===================== 文件系统 ===================== */
+int fs_list(const char *path, fs_entry **out, int *n) {
+    const char *p = path && *path ? path : ".";
+    DIR *d = opendir(p);
+    if (!d) { *out = 0; *n = 0; return -E_NOENT; }
+    int cnt = 0;
     struct dirent *e;
-    struct stat st;
-    if (!d) return E_NOENT;
-    while ((e = readdir(d)) != NULL && n < 1024) {
-        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
-        strncpy(arr[n].name, e->d_name, 63); arr[n].name[63] = 0;
-        stat(e->d_name, &st);
-        arr[n].is_dir = S_ISDIR(st.st_mode);
-        arr[n].size   = (long)st.st_size;
-        n++;
+    while ((e = readdir(d)) && cnt < 128) {
+        if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
+        char full[640];
+        snprintf(full, sizeof full, "%s/%s", p, e->d_name);
+        struct stat st;
+        int is_dir = 0; long sz = 0;
+        if (stat(full, &st) == 0) {
+            is_dir = S_ISDIR(st.st_mode);
+            sz = (long)st.st_size;
+        }
+        fs_entry *f = &g_fs_buf[cnt];
+        strncpy(f->name, e->d_name, 63); f->name[63] = 0;
+        f->is_dir = is_dir; f->size = sz;
+        cnt++;
     }
     closedir(d);
-#endif
-    *out = arr; *count = n;
+    *out = g_fs_buf; *n = cnt;
     return 0;
 }
-
-long fs_read(const char *path, char *buf, long n) {
+int fs_getcwd(char *buf, int n) { return getcwd(buf, n) ? 0 : -E_IO; }
+int fs_chdir(const char *path) {
+    struct stat st;
+    if (stat(path, &st) != 0) return -E_NOENT;
+    if (!S_ISDIR(st.st_mode)) return -E_NOENT;
+    return chdir(path) == 0 ? 0 : -E_IO;
+}
+long fs_read(const char *path, char *buf, int n) {
     FILE *f = fopen(path, "rb");
-    if (!f) return -(long)E_NOENT;
-    long r = (long)fread(buf, 1, (size_t)n, f);
+    if (!f) return -E_NOENT;
+    long r = (long)fread(buf, 1, n, f);
     fclose(f);
-    if (r < 0) return -(long)E_IO;
     return r;
 }
-
-int fs_mkdir(const char *name) {
-#ifdef _WIN32
-    return CreateDirectoryA(name, NULL) ? 0 : E_IO;
-#else
-    return mkdir(name, 0755) == 0 ? 0 : E_IO;
-#endif
-}
-
-int fs_remove(const char *path) {
-#ifdef _WIN32
-    DWORD a = GetFileAttributesA(path);
-    if (a == INVALID_FILE_ATTRIBUTES) return E_NOENT;
-    if (a & FILE_ATTRIBUTE_DIRECTORY) return E_PERM;   /* v0.1 不允许删目录 */
-    return DeleteFileA(path) ? 0 : E_IO;
-#else
+int fs_mkdir(const char *path) {
     struct stat st;
-    if (stat(path, &st) != 0) return E_NOENT;
-    if (S_ISDIR(st.st_mode)) return E_PERM;            /* v0.1 不允许删目录 */
-    return remove(path) == 0 ? 0 : E_IO;
+    if (stat(path, &st) == 0) return -E_IO;
+#if defined(_WIN32)
+    return mkdir(path) == 0 ? 0 : -E_IO;
+#else
+    return mkdir(path, 0755) == 0 ? 0 : -E_IO;
 #endif
 }
-
-int fs_touch(const char *name) {
-    FILE *f = fopen(name, "a");
-    if (!f) return E_IO;
+int fs_remove(const char *path) {
+    struct stat st;
+    if (stat(path, &st) != 0) return -E_NOENT;
+    if (S_ISDIR(st.st_mode)) return -E_PERM;
+    return remove(path) == 0 ? 0 : -E_IO;
+}
+int fs_touch(const char *path) {
+    FILE *f = fopen(path, "a");
+    if (!f) return -E_IO;
     fclose(f);
     return 0;
 }
 
-/* ---------------- proc_api ---------------- */
-
+/* ===================== 进程 ===================== */
 void proc_list_print(void) {
-    int pid =
+    printf("PID\tNAME\tSTATUS\tMEM\n");
 #ifdef _WIN32
-        (int)GetCurrentProcessId();
+    printf("0\ttinysh\trun\t-\n");   /* MinGW 无 getpid()，占位即可 */
 #else
-        (int)getpid();
+    printf("%d\ttinysh\trun\t-\n", (int)getpid());
 #endif
-    printf("PID\tNAME\tSTATE\tMEM\n");
-    printf("%d\ttinysh\trunning\t-\n", pid);
-    printf("(宿主机后端仅显示当前进程；TinyOS 后端将列出真实进程表)\n");
 }
-
 int proc_kill(int pid) {
+#ifdef _WIN32
     (void)pid;
-    /* 宿主机自测后端不真正发信号，按手册返回 PID 不存在 */
-    return E_NOPID;
+    return -E_NOPID;
+#else
+    if (kill(pid, SIGTERM) == 0) return 0;
+    return -E_NOPID;
+#endif
 }
 
-/* ---------------- hw_api ---------------- */
-
-int hw_devlist(hw_dev **out, int *count) {
-    static hw_dev arr[8];
-    *out = arr; *count = 0;   /* 宿主机无硬件设备 */
+/* ===================== 硬件（宿主仅展示，不真正访问端口） ===================== */
+int hw_devlist(hw_dev **out, int *n) {
+    const char *names[] = { "com1", "com2", "pic", "pit", "vga", "kbd", "ide0" };
+    static const unsigned short bases[] = { 0x3F8, 0x2F8, 0x20, 0x40, 0x3D4, 0x60, 0x1F0 };
+    static const unsigned short sizes[] = { 8, 8, 2, 4, 2, 1, 8 };
+    int cnt = 0;
+    for (int i = 0; i < 7 && cnt < 32; i++) {
+        strncpy(g_devs[cnt].path, names[i], 39); g_devs[cnt].path[39] = 0;
+        g_devs[cnt].io_base = bases[i];
+        g_devs[cnt].io_size = sizes[i];
+        cnt++;
+    }
+    *out = g_devs; *n = cnt;
     return 0;
 }
-
 int hw_readdev(const char *dev, unsigned addr, unsigned *val) {
     (void)dev; (void)addr; (void)val;
-    return E_IO;   /* 宿主机不支持硬件寄存器访问 */
+    return -E_IO;   /* 宿主无端口权限 */
 }
-
 int hw_writedev(const char *dev, unsigned addr, unsigned val) {
     (void)dev; (void)addr; (void)val;
-    return E_IO;
+    return -E_IO;
 }
 
-/* ---------------- 系统信息 ---------------- */
-
-void sys_version(char *buf, int n) {
-    snprintf(buf, n, "TinyOS Genesis v0.1  |  tinysh v0.1  |  host build");
-}
-
-void sys_sysinfo(char *buf, int n) {
-    snprintf(buf, n,
-        "CPU: host  Mem total: -  Free: -  Uptime: -  Process count: 1");
-}
-
-void sys_date(char *buf, int n) {
-    time_t t = time(NULL);
-    char *s = ctime(&t);
-    if (s) { s[strcspn(s, "\n")] = 0; snprintf(buf, n, "%s", s); }
-    else   { buf[0] = 0; }
+/* ===================== 入口 ===================== */
+int main(void) {
+    return tinysh_run();
 }
