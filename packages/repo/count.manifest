@@ -1,0 +1,10 @@
+name: count
+version: v0.1
+description: 循环与计数器，演示 C 的基本控制流与终端输出
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: 347c41ce0a4f48c5f28a4bbe3bab3788c87f800076ed19b0d8129c8859e5e8ac
+build:
+  entry: src/count.TNCR
+  output: /bin/count.TNCR
+  cmd: '# 由 tools/build_users.py 交叉编译并打进 romfs'

@@ -1,0 +1,10 @@
+name: minic_demo
+version: v0.1
+description: MiniC 编译器示例（calc）
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: ca92e2c0b062ee0605499b8e058db8aeaa62e4c1e3e84d6ed21adacf6ecf6aae
+build:
+  entry: src/minic_demo.TNCR
+  output: /bin/minic_demo.TNCR
+  cmd: '# 由 tools/build_users.py 交叉编译并打进 romfs'

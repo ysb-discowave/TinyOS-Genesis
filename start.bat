@@ -11,7 +11,10 @@ REM  That password is what you log in with.
 REM
 REM  Later runs: the disk already exists, so you go straight to login.
 REM
-REM  Optional: pass your own disk image as the first argument.
+REM  Optional args:  start.bat [disk.img] [reinstall]
+REM    reinstall  -> 备份现有数据盘并重建，把新内核 romfs 里的程序
+REM                  写进盘（用于刷新到新版本，例如新的 tinysh / pkg 源）。
+REM                  不加 reinstall 则原地保留数据盘（兼容旧行为）。
 REM ============================================================================
 setlocal enabledelayedexpansion
 
@@ -22,6 +25,9 @@ set "ELF=%ROOT%\build\kernel.elf"
 set "QEMU=C:\Program Files\qemu\qemu-system-i386.exe"
 
 set "DISK=%~1"
+set "MODE=keep"
+if /i "%~1"=="reinstall" ( set "MODE=reinstall" & set "DISK=%ROOT%\tinyos-disk.img" )
+if /i "%~2"=="reinstall" ( set "MODE=reinstall" )
 if "%DISK%"=="" set "DISK=%ROOT%\tinyos-disk.img"
 
 set "FIRST=0"
@@ -40,6 +46,20 @@ if not exist "%ELF%" goto no_kernel
 REM 端口被上一次没退干净的 QEMU 占着时，QEMU 会**直接退出**且窗口一闪就没，
 REM 看起来像"启动不了"。这里主动检测并清理。
 call :free_ports
+
+REM -- reinstall 模式：把现有盘备份后删掉，让下面的 firstrun 重建并把
+REM    romfs 里的新程序（含新 tinysh / pkg Worker 源）写进盘。
+REM    旧盘上的旧二进制不会再盖住新 romfs 了。
+if /i "%MODE%"=="reinstall" (
+    if exist "%DISK%" (
+        for /f "delims=" %%T in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set "TS=%%T"
+        set "BAK=%ROOT%\tinyos-disk.bak-!TS!.img"
+        echo  [*] Reinstall: backing up existing disk to
+        echo        !BAK!
+        move /Y "%DISK%" "!BAK!" >nul
+        if exist "!BAK!" echo  [+] Backup saved.
+    )
+)
 
 if exist "%DISK%" goto boot
 

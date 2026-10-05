@@ -1,0 +1,10 @@
+name: cpp_demo
+version: v0.1
+description: 最小化 C++ 程序，验证 C++ 工具链可用性
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: b3c76dd35c1c9abe1178226b24368f2883cf1f5ef97b4889249a0f306a5680d8
+build:
+  entry: src/cpp_demo.TNCR
+  output: /bin/cpp_demo.TNCR
+  cmd: '# 由 tools/build_users.py 交叉编译并打进 romfs'

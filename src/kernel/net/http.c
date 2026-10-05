@@ -150,42 +150,9 @@ static int http_do(tcp_conn_t *c, const char *host, const char *path,
     return 0;
 }
 
-/* 连接并仅读取响应头，返回 Content-Length（>0）。失败返回 0（GH raw 必有）*/
-static long http_head_len(u32 ip, int port, const char *host, const char *path) {
-    tcp_conn_t *c = tcp_connect(ip, (u16)port);
-    if (!c) return 0;
-    if (tcp_wait_established(c, 5000) != 0) { tcp_close(c); return 0; }
-    char req[512];
-    int rl = snprintf(req, sizeof req,
-        "CONNECT %s:%d HTTP/1.1\r\n"
-        "Host: %s:%d\r\n"
-        "User-Agent: %s\r\n"
-        "Proxy-Connection: keep-alive\r\n"
-        "\r\n", host, port, host, port, HTTP_UA);
-    if (rl <= 0 || rl >= (int)sizeof req || tcp_send(c, (const u8 *)req, (u32)rl) != rl) {
-        tcp_close(c); return 0;
-    }
-    u8 hbuf[2048];
-    int htot = 0, hdr_end = -1;
-    u32 waited = 0;
-    while (htot < (int)sizeof hbuf) {
-        int n = tcp_recv(c, hbuf + htot, (u32)(sizeof hbuf - htot));
-        if (n > 0) {
-            htot += n;
-            for (int i = 3; i < htot; i++)
-                if (hbuf[i-3]=='\r' && hbuf[i-2]=='\n' && hbuf[i-1]=='\r' && hbuf[i]=='\n') {
-                    hdr_end = i + 1; break;
-                }
-        }
-        if (hdr_end >= 0) break;
-        if (tcp_closed_by_peer(c)) break;
-        net_poll(); pit_sleep(1);
-        if (++waited >= 3000) break;
-    }
-    tcp_close(c);
-    if (hdr_end < 0) return 0;
-    return hdr_content_length(hbuf, hdr_end);
-}
+/* http_head_len 已移除：旧实现用 CONNECT 探测长度对普通 HTTP 服务器无效，
+ * 且 Cloudflare 对大文件常走 chunked、不返回 Content-Length。
+ * http_get_file 现改为单连接 GET（Connection: close）读到 EOF 即完整 body。 */
 
 int http_get(const char *host, int port, const char *path,
              void *buf, int max, int *out_len) {
@@ -205,30 +172,25 @@ int http_get_file(const char *host, int port, const char *path, const char *loca
     u32 ip = 0;
     if (dns_resolve(host, &ip) != 0) return HTTP_E_DNS;
 
-    long total = http_head_len(ip, port, host, path);
-    if (total <= 0) return HTTP_E_BADST;
-
-    u8 *full = (u8 *)kmalloc((u32)total);
+    /* 单连接、无 Range 的 GET（Connection: close）。服务端在我们发
+       Connection: close 后会主动关闭连接，内核读到 EOF 即可拿到完整 body，
+       不再依赖响应里的 Content-Length —— Cloudflare 对大文件常走 chunked，
+       并不总返回 Content-Length，旧的 http_head_len 因此总是拿不到长度。
+       上限 256 KiB 覆盖当前最大包（LUA 约 210 KiB）并留有余量。 */
+    const int MAXDL = 262144;   /* 256 KiB */
+    u8 *full = (u8 *)kmalloc((u32)MAXDL);
     if (!full) return HTTP_E_NOMEM;
 
-    const int CHUNK = 16384;   /* 每块 16KB；TCB 接收窗 32KB，留有余量 */
-    long off = 0;
-    int rc = 0;
-    while (off < total) {
-        long want = (total - off < CHUNK) ? (total - off) : CHUNK;
-        tcp_conn_t *c = tcp_connect(ip, (u16)port);
-        if (!c) { rc = HTTP_E_CONN; break; }
-        if (tcp_wait_established(c, 5000) != 0) { tcp_close(c); rc = HTTP_E_TIMEOUT; break; }
-        int got = 0;
-        int r = http_do(c, host, path, off, want, full + off, (int)want, &got);
-        tcp_close(c);
-        if (r != 0) { rc = r; break; }
-        off += got;
-        if (got < want) break;   /* 服务端给少了，按实际推进后退出 */
-    }
-    if (rc == 0 && off != total) rc = HTTP_E_RECV;
+    tcp_conn_t *c = tcp_connect(ip, (u16)port);
+    if (!c) { kfree(full); return HTTP_E_CONN; }
+    if (tcp_wait_established(c, 5000) != 0) { tcp_close(c); kfree(full); return HTTP_E_TIMEOUT; }
+
+    int got = 0;
+    int rc = http_do(c, host, path, 0, 0, full, MAXDL, &got);
+    tcp_close(c);
     if (rc == 0) {
-        if (vfs_write_file(local, full, (u32)total) != 0) rc = HTTP_E_WRITE;
+        if (got <= 0) rc = HTTP_E_RECV;
+        else if (vfs_write_file(local, full, (u32)got) != 0) rc = HTTP_E_WRITE;
     }
     kfree(full);
     return rc;

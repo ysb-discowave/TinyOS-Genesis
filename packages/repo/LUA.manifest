@@ -1,0 +1,10 @@
+name: LUA
+version: v0.1
+description: Lua 5.4.7 解释器（REPL 交互 + lua /home/x.lua 脚本模式）
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: 24c908b1aaf430629423ae0c29a9d65f107c53d19ef561d32c5a987899095ba5
+build:
+  entry: src/LUA.TNCR
+  output: /bin/LUA.TNCR
+  cmd: '# 由 tools/build_users.py 交叉编译并打进 romfs'

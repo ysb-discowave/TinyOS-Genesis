@@ -1,0 +1,10 @@
+name: tiny_demo
+version: v0.1
+description: TinyLang 源程序示例，验证 TinyLang 工具链
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: dfdefb943aa31c6d66b415848e7cc1c7b3a4f4c9a069414de9e88130c0cdfdf3
+build:
+  entry: src/tiny_demo.TNCR
+  output: /bin/tiny_demo.TNCR
+  cmd: '# 由 tools/build_users.py 交叉编译并打进 romfs'

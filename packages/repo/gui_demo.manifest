@@ -1,0 +1,10 @@
+name: gui_demo
+version: v0.1
+description: 桌面 GUI 演示（--gui），展示窗口与图形输出
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: e553e1be79b1da419fe2f0ccd784230dd534157a5ff66aa6c7739372ed48c281
+build:
+  entry: src/gui_demo.TNCR
+  output: /bin/gui_demo.TNCR
+  cmd: '# 由 tools/build_users.py 交叉编译并打进 romfs'

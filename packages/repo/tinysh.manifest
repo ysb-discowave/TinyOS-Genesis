@@ -1,10 +1,10 @@
 name: tinysh
 version: v0.1
-description: TinyOS Genesis 默认 Shell（/bin/tinysh.tncr）
+description: TinyOS Genesis 默认 Shell（登录后自动进入，20 条命令 + 三级命令查找链）
 dependencies: []
 min_compiler: tncr>=0.1
-sha256: a35a67bc938e91434a3c0e2ac86688e14d95ce948f3e2a7eb6442be7fdb02bda
+sha256: beefecd3fb2fd2eb1fdeb8d2275ce51e77160446d4395b76acba44e93c1aed9c
 build:
-  entry: src/tinysh.c
-  output: /bin/tinysh.tncr
-  cmd: zig cc -std=c11 -DTINYOS_USER -o tinysh.tncr src/tinysh.c src/kernel_api_tinyos.c
+  entry: src/tinysh.TNCR
+  output: /bin/tinysh.TNCR
+  cmd: '# 由 tools/build_users.py 交叉编译并打进 romfs'

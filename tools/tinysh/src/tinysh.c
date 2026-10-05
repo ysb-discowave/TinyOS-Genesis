@@ -264,34 +264,41 @@ static void pkg_conf_get(const char *key, char *out, int n, const char *def) {
     }
 }
 
-/* 首次使用时把默认配置（含 GitHub raw 源）写入 /etc/pkg.conf，
- * 这样 `pkg source` 能看到、也能被用户 `pkg source set` 覆盖。 */
+/* 首次使用时把默认配置（Worker 中转镜像源）写入 /etc/pkg.conf，
+ * 这样 `pkg source` 能看到、也能被用户 `pkg source set` 覆盖。
+ * 若盘上残留旧版 GitHub raw 源（raw.githubusercontent.com），则整体
+ * 重写为新源，避免旧 /etc/pkg.conf 让 pkg 永远拉不到包。 */
 static void pkg_conf_ensure(void) {
-    static char conf[4096];
-    long r = fs_read(PKG_CONF, conf, (int)sizeof(conf) - 1);
-    if (r >= 0) return;   /* 已存在，保留用户改动 */
-    const char *def =
+    static const char *def =
         "sourcedir=/home/pkgrepo\n"
         "ftp_host=10.0.2.2\n"
         "ftp_port=21\n"
         "ftp_user=anonymous\n"
         "ftp_pass=\n"
         "ftp_path=/packages/repo\n"
-        "repo_host=raw.githubusercontent.com\n"
-        "repo_port=443\n"
-        "repo_path=/ysb-discowave/TinyOS-Genesis/main/packages/repo\n"
+        "repo_host=tinyos-pkg-down.ysbdwz.dpdns.org\n"
+        "repo_port=80\n"
+        "repo_path=\n"
         "https_proxy_host=\n"
         "https_proxy_port=8080\n";
+    static char conf[4096];
+    long r = fs_read(PKG_CONF, conf, (int)sizeof(conf) - 1);
+    if (r >= 0) {
+        conf[r] = 0;
+        if (strstr(conf, "raw.githubusercontent.com") != NULL)
+            fs_write(PKG_CONF, def, (int)strlen(def));  /* 旧源 -> Worker 中转 */
+        return;
+    }
     fs_write(PKG_CONF, def, (int)strlen(def));
 }
 
 static void pkg_print_help(void) {
-    printf("pkg: package manager (v0.1, local + FTP + GitHub raw source)\n");
+    printf("pkg: package manager (v0.1, local + FTP + HTTP source)\n");
     printf("usage:\n");
     printf("  pkg list                 list installed packages\n");
     printf("  pkg info <name>          show details of a package\n");
     printf("  pkg verify [name]        verify sha256 of package(s)\n");
-    printf("  pkg install <name>       install from local source, FTP, or GitHub\n");
+    printf("  pkg install <name>       install from local source, FTP, or HTTP\n");
     printf("  pkg remove <name>        remove an installed package\n");
     printf("  pkg source [set <path>]  show / set the source dir\n");
     printf("  pkg help                 this message\n");
@@ -299,16 +306,16 @@ static void pkg_print_help(void) {
     printf("  install looks up the package in this order:\n");
     printf("    1) local source dir (sourcedir)\n");
     printf("    2) FTP source (ftp_host/ftp_port/ftp_path)\n");
-    printf("    3) GitHub raw source (repo_host/repo_port/repo_path)\n");
-    printf("  each source serves <name>.manifest + <name>.TNCR; the manifest's\n");
+    printf("    3) HTTP source (repo_host/repo_port/repo_path)\n");
+    printf("  each source serves <name>.manifest + <name>.tncr; the manifest's\n");
     printf("  sha256 is checked against the downloaded binary before install.\n");
-    printf("  GitHub forces HTTPS: plain HTTP gets a 301 redirect, so the\n");
-    printf("  GitHub source only works through an HTTP proxy. Set it in\n");
+    printf("  The default HTTP source is the tinyos-pkg-down Worker mirror, which\n");
+    printf("  terminates TLS at the edge and serves plain HTTP, so the kernel\n");
     printf("  /etc/pkg.conf:\n");
     printf("    https_proxy_host=<proxy>\n");
     printf("    https_proxy_port=<port>\n");
-    printf("  The kernel has no TLS stack yet, so the CONNECT tunnel reports\n");
-    printf("  notls instead of pretending to be encrypted.\n");
+    printf("  To pull from raw GitHub instead, set https_proxy_host / https_proxy_port;\n");
+    printf("  the CONNECT tunnel still needs a kernel TLS stack (see docs).\n");
 }
 
 static int cmd_pkg(int argc, char **argv) {
@@ -499,18 +506,18 @@ static int cmd_pkg(int argc, char **argv) {
         pkg_conf_get("ftp_user", fu, sizeof fu, "anonymous");
         pkg_conf_get("ftp_pass", fpass, sizeof fpass, "");
         pkg_conf_get("ftp_path", fpath, sizeof fpath, "/packages/repo");
-        pkg_conf_get("repo_host", gh, sizeof gh, "raw.githubusercontent.com");
-        pkg_conf_get("repo_port", gport, sizeof gport, "443");
+        pkg_conf_get("repo_host", gh, sizeof gh, "tinyos-pkg-down.ysbdwz.dpdns.org");
+        pkg_conf_get("repo_port", gport, sizeof gport, "80");
         pkg_conf_get("repo_path", gpath, sizeof gpath,
-                     "/ysb-discowave/TinyOS-Genesis/main/packages/repo");
+                     "");
         printf("pkg: source dir : %s\n", sd);
         printf("pkg: ftp source : %s:%s user=%s pass=%s path=%s\n",
                fh, fp, fu, fpass, fpath);
-        printf("pkg: github raw: %s:%s path=%s\n", gh, gport, gpath);
+        printf("pkg: http source: %s:%s path=%s\n", gh, gport, gpath);
         if (pxh[0])
-            printf("pkg: https proxy: %s:%s (CONNECT tunnel)\n", pxh, pxp);
+            printf("pkg: https proxy: %s:%s (CONNECT tunnel, for raw GitHub)\n", pxh, pxp);
         else
-            printf("pkg: https proxy: (unset) -- GitHub needs one; plain HTTP gets 301\n");
+            printf("pkg: https proxy: (unset) -- using plain HTTP Worker mirror\n");
         return E_OK;
     }
 
@@ -531,10 +538,10 @@ static int cmd_pkg(int argc, char **argv) {
         pkg_conf_get("ftp_user", fu, sizeof fu, "anonymous");
         pkg_conf_get("ftp_pass", fpass, sizeof fpass, "");
         pkg_conf_get("ftp_path", fpath, sizeof fpath, "/packages/repo");
-        pkg_conf_get("repo_host", gh, sizeof gh, "raw.githubusercontent.com");
-        pkg_conf_get("repo_port", gport, sizeof gport, "443");
+        pkg_conf_get("repo_host", gh, sizeof gh, "tinyos-pkg-down.ysbdwz.dpdns.org");
+        pkg_conf_get("repo_port", gport, sizeof gport, "80");
         pkg_conf_get("repo_path", gpath, sizeof gpath,
-                     "/ysb-discowave/TinyOS-Genesis/main/packages/repo");
+                     "");
 
         char mpath[512];
         char bpath[512];
@@ -564,10 +571,10 @@ static int cmd_pkg(int argc, char **argv) {
                 char mbuf[4096]; int mlen2 = 0;
                 char gman[512], gbin[512];
                 snprintf(gman, sizeof gman, "%s/%s.manifest", gpath, name);
-                printf("pkg: trying GitHub raw %s:%s ...\n", gh, gport);
-                if (pxh[0]) {
-                    /* 走 HTTP CONNECT 代理。隧道之后需要 TLS 栈，内核尚未
-                     * 实现，会返回 E_NOTLS —— 如实上报，不假装加密。 */
+                printf("pkg: trying HTTP source %s:%s ...\n", gh, gport);
+                                if (pxh[0]) {
+                    /* 走 HTTP CONNECT 代理（真实 GitHub / 进阶用法）。
+                     * 隧道之后需 TLS 栈，内核尚未实现，会返回 E_NOTLS。 */
                     int tr = net_http_tunnel(pxh, atoi(pxp), gh, atoi(gport));
                     if (tr == -E_NOTLS) {
                         printf("pkg: proxy %s:%s accepted CONNECT, but the kernel\n", pxh, pxp);
@@ -576,28 +583,22 @@ static int cmd_pkg(int argc, char **argv) {
                     } else if (tr != 0) {
                         printf("pkg: proxy %s:%s refused CONNECT (code %d)\n", pxh, pxp, tr);
                     }
-                } else {
-                    /* 没配代理：GitHub 只接受 HTTPS，明文请求没有意义。
-                     * 直接说明原因，不去连 443 白等一个收包超时。 */
-                    printf("pkg: no https proxy configured.\n");
-                    printf("     raw.githubusercontent.com only answers HTTPS;\n");
-                    printf("     plain HTTP gets a 301 and no content.\n");
-                    printf("     Set https_proxy_host / https_proxy_port in\n");
-                    printf("     /etc/pkg.conf to route through a proxy.\n");
                 }
-                if (pxh[0] &&
-                    net_http_get(gh, atoi(gport), gman, mbuf, (int)sizeof mbuf, &mlen2) == 0
+
+                /* 默认：明文 HTTP 直连中转 Worker（无需 TLS 栈）。 */
+                printf("pkg: trying HTTP source %s:%s ...\n", gh, gport);
+                snprintf(bpath, sizeof bpath, "%s/pkg_%s.tncr", PKG_TMP_DIR, name);
+                snprintf(gbin, sizeof gbin, "%s/%s.tncr", gpath, name);
+                if (net_http_get(gh, atoi(gport), gman, mbuf, (int)sizeof mbuf, &mlen2) == 0
                     && mlen2 > 0 && mlen2 < (int)sizeof md) {
                     memcpy(md, mbuf, (size_t)mlen2); mlen = mlen2;
-                    snprintf(bpath, sizeof bpath, "%s/pkg_%s.TNCR", PKG_TMP_DIR, name);
-                    snprintf(gbin, sizeof gbin, "%s/%s.TNCR", gpath, name);
                     if (net_http_file(gh, atoi(gport), gbin, bpath) == 0) {
                         from_net = 2;
                     } else {
-                        printf("pkg: failed to fetch binary via GitHub: %s\n", name);
+                        printf("pkg: failed to fetch binary via HTTP: %s\n", name);
                     }
-                } else if (pxh[0]) {
-                    printf("pkg: GitHub raw unreachable through the proxy.\n");
+                } else {
+                    printf("pkg: HTTP source %s:%s unreachable (check repo_host/repo_port).\n", gh, gport);
                 }
             }
         }

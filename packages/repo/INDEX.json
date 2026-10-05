@@ -1,0 +1,80 @@
+{
+  "generated": "2026-10-05T17:33:02",
+  "packages": [
+    {
+      "name": "CC",
+      "size": 162680,
+      "sha256": "2cd651fb19122096d1c79a93bd7c131e8b2a143dbac742b8f7f18b8e8ad8f401"
+    },
+    {
+      "name": "DESKTOP",
+      "size": 34,
+      "sha256": "02b93608bb92b3c652b45a734de43435c726419faa6f7454bd8ed14714f375da"
+    },
+    {
+      "name": "EDIT",
+      "size": 45980,
+      "sha256": "0d00374174c799423b56f59e8f6646040a37fe788c96b358ea41677b58ecf37c"
+    },
+    {
+      "name": "JVM",
+      "size": 5851,
+      "sha256": "152792856b7d854182b794eac2f2bc8fb667e90c1c0d2b7d806470dd926dcd17"
+    },
+    {
+      "name": "LUA",
+      "size": 210584,
+      "sha256": "24c908b1aaf430629423ae0c29a9d65f107c53d19ef561d32c5a987899095ba5"
+    },
+    {
+      "name": "SSHD",
+      "size": 114500,
+      "sha256": "2507b0deaf22551b65eb85e276ba30aab949974430d6a876d64549e95eac8d02"
+    },
+    {
+      "name": "basic_demo",
+      "size": 204,
+      "sha256": "b9e6faf53975ca7b7fad32d0b51471c31c22216e56cc8fff96e2d0601dfa4193"
+    },
+    {
+      "name": "count",
+      "size": 877,
+      "sha256": "347c41ce0a4f48c5f28a4bbe3bab3788c87f800076ed19b0d8129c8859e5e8ac"
+    },
+    {
+      "name": "cpp_demo",
+      "size": 339,
+      "sha256": "b3c76dd35c1c9abe1178226b24368f2883cf1f5ef97b4889249a0f306a5680d8"
+    },
+    {
+      "name": "gui_demo",
+      "size": 470,
+      "sha256": "e553e1be79b1da419fe2f0ccd784230dd534157a5ff66aa6c7739372ed48c281"
+    },
+    {
+      "name": "hello",
+      "size": 214,
+      "sha256": "050668ab67b7743b5e50372f07e95be433bf14234abe52267fbf19170d5ba492"
+    },
+    {
+      "name": "minic_demo",
+      "size": 500,
+      "sha256": "ca92e2c0b062ee0605499b8e058db8aeaa62e4c1e3e84d6ed21adacf6ecf6aae"
+    },
+    {
+      "name": "net_demo",
+      "size": 467,
+      "sha256": "3d41ba3758a1539440b8de1e27a5c22ac91803fabf1898a04521f0090c5f6e16"
+    },
+    {
+      "name": "tiny_demo",
+      "size": 238,
+      "sha256": "dfdefb943aa31c6d66b415848e7cc1c7b3a4f4c9a069414de9e88130c0cdfdf3"
+    },
+    {
+      "name": "tinysh",
+      "size": 105600,
+      "sha256": "beefecd3fb2fd2eb1fdeb8d2275ce51e77160446d4395b76acba44e93c1aed9c"
+    }
+  ]
+}

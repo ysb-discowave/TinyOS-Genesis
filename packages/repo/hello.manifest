@@ -1,0 +1,10 @@
+name: hello
+version: v0.1
+description: 最小化 C 程序，验证 C 工具链与 TNCR 运行时
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: 050668ab67b7743b5e50372f07e95be433bf14234abe52267fbf19170d5ba492
+build:
+  entry: src/hello.TNCR
+  output: /bin/hello.TNCR
+  cmd: '# 由 tools/build_users.py 交叉编译并打进 romfs'

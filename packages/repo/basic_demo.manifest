@@ -1,0 +1,10 @@
+name: basic_demo
+version: v0.1
+description: TinyBASIC 解释器运行的循环示例
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: b9e6faf53975ca7b7fad32d0b51471c31c22216e56cc8fff96e2d0601dfa4193
+build:
+  entry: src/basic_demo.TNCR
+  output: /bin/basic_demo.TNCR
+  cmd: '# 由 tools/build_users.py 交叉编译并打进 romfs'

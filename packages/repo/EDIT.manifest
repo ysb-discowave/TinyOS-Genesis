@@ -1,0 +1,10 @@
+name: EDIT
+version: v0.1
+description: 全屏文本编辑器：edit <file>
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: 0d00374174c799423b56f59e8f6646040a37fe788c96b358ea41677b58ecf37c
+build:
+  entry: src/EDIT.TNCR
+  output: /bin/EDIT.TNCR
+  cmd: '# 由 tools/build_users.py 交叉编译并打进 romfs'

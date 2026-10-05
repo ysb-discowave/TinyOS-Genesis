@@ -1,0 +1,10 @@
+name: JVM
+version: v0.1
+description: JVM 运行时
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: 152792856b7d854182b794eac2f2bc8fb667e90c1c0d2b7d806470dd926dcd17
+build:
+  entry: src/JVM.TNCR
+  output: /bin/JVM.TNCR
+  cmd: '# 由 tools/build_users.py 交叉编译并打进 romfs'

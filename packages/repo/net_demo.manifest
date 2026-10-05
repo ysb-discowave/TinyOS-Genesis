@@ -1,0 +1,10 @@
+name: net_demo
+version: v0.1
+description: 网络栈演示，使用 ARP/IPv4/TCP
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: 3d41ba3758a1539440b8de1e27a5c22ac91803fabf1898a04521f0090c5f6e16
+build:
+  entry: src/net_demo.TNCR
+  output: /bin/net_demo.TNCR
+  cmd: '# 由 tools/build_users.py 交叉编译并打进 romfs'
