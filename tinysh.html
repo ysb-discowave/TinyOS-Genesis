@@ -133,7 +133,7 @@
          data-en="A genuine user-space TNCR program, not a kernel builtin.">一个真正的用户态 TNCR 程序，不是内核内建。</p>
 
       <div class="card">
-        <h3 data-zh="/bin/tinysh.TNCR · 46408 字节" data-en="/bin/tinysh.TNCR · 46408 bytes">/bin/tinysh.TNCR · 46408 字节</h3>
+        <h3 data-zh="/bin/tinysh.TNCR · 104144 字节" data-en="/bin/tinysh.TNCR · 104144 bytes">/bin/tinysh.TNCR · 104144 字节</h3>
         <p data-zh="tinysh 是打包成自定义 TNCR 格式的用户程序，由 TNCR 加载器载入用户态运行。它不能直接碰硬件或内存，只能通过 tinyos_api_t 函数指针表去访问内核提供的服务（文件、进程、设备寄存器）。内核里没有写死一个 shell，换掉这个 TNCR 文件就能换 shell。"
            data-en="tinysh is a user program packaged in the custom TNCR format and loaded into user space by the TNCR loader. It cannot touch hardware or memory directly; it can only reach kernel services (files, processes, device registers) through the tinyos_api_t function-pointer table. The kernel has no hard-wired shell — swap this TNCR file and you swap the shell.">tinysh 是打包成自定义 TNCR 格式的用户程序，由 TNCR 加载器载入用户态运行。它不能直接碰硬件或内存，只能通过 <span class="hint-code">tinyos_api_t</span> 函数指针表去访问内核提供的服务（文件、进程、设备寄存器）。内核里没有写死一个 shell，换掉这个 TNCR 文件就能换 shell。</p>
       </div>
@@ -299,7 +299,7 @@
 
       var FS = makeDir({
         bin: makeDir({
-          'tinysh.TNCR': makeFile(46408),
+          'tinysh.TNCR': makeFile(104144),
           'LUA.TNCR': makeFile(210584),
           'SSHD.TNCR': makeFile(114500),
           'EDIT.TNCR': makeFile(45980),

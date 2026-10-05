@@ -3,7 +3,7 @@ version: v0.1
 description: TinyOS Genesis 默认 Shell（/bin/tinysh.tncr）
 dependencies: []
 min_compiler: tncr>=0.1
-sha256: b96e52e09a177363f2e23140e2ea3f508b24e9f683439c1a57b72f6500dd4535
+sha256: a35a67bc938e91434a3c0e2ac86688e14d95ce948f3e2a7eb6442be7fdb02bda
 build:
   entry: src/tinysh.c
   output: /bin/tinysh.tncr

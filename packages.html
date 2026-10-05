@@ -191,7 +191,7 @@ pkg install tinysh</code></pre>
           <pre class="term-body" aria-label="pkg 实测输出">root@tinyos:/root# pkg list
 NAME             VERSION        SIZE
 JVM              ?              5851
-tinysh           ?             46408
+tinysh           ?            104144
 LUA              ?            210584
 CC               ?             162680
 EDIT             ?              45980
@@ -203,13 +203,13 @@ root@tinyos:/root# pkg info tinysh
 package: tinysh
   version : ?
   source  : (unregistered: only raw /bin file present)
-  size    : 46408 bytes
-  sha256  : b96e52e09a177363f2e23140e2ea3f508b24e9f683439c1a57b72f6500dd4535
+  size    : 104144 bytes
+  sha256  : a35a67bc938e91434a3c0e2ac86688e14d95ce948f3e2a7eb6442be7fdb02bda
   verify  : no recorded sha256
 
 root@tinyos:/root# pkg verify
 NAME             RESULT
-tinysh           no sha256 recorded (actual b96e52e0...)
+tinysh           no sha256 recorded (actual a35a67bc...)
 
 root@tinyos:/root# pkg install nosuchpkg
 pkg: package file not found: /home/pkgrepo/nosuchpkg.[tT]NCR
@@ -253,8 +253,8 @@ pkg: removed tinysh</pre>
 
         <h3 data-zh="实测的 tinysh 校验值" data-en="Measured tinysh hash">实测的 tinysh 校验值</h3>
         <div class="code-block" role="img" aria-label="tinysh 实测 sha256">
-          <pre aria-label="tinysh sha256"><code>sha256: b96e52e09a177363f2e23140e2ea3f508b24e9f683439c1a57b72f6500dd4535
-size  : 46408 bytes   (file: tinysh.TNCR)</code></pre>
+          <pre aria-label="tinysh sha256"><code>sha256: a35a67bc938e91434a3c0e2ac86688e14d95ce948f3e2a7eb6442be7fdb02bda
+size  : 104144 bytes  (file: tinysh.TNCR)</code></pre>
         </div>
         <p class="chart-note" data-zh="这个值是 QEMU 实测算出的真实哈希，已回填进 packages/tinysh/tinysh.manifest 的 sha256 字段。因此对 tinysh 而言，install 与 verify 都能做真正的完整性校验。"
            data-en="This is the real hash measured under QEMU and now filled into the sha256 field of packages/tinysh/tinysh.manifest. So for tinysh, both install and verify run genuine integrity checks.">这个值是 QEMU 实测算出的真实哈希，已回填进 packages/tinysh/tinysh.manifest 的 sha256 字段。因此对 tinysh 而言，install 与 verify 都能做真正的完整性校验。</p>
@@ -289,7 +289,7 @@ sourcedir /home/pkgrepo</code></pre>
         <ul class="matrix">
           <li class="card">
             <h3>tinysh.tncr</h3>
-            <p data-zh="真实的 46408 字节产物（与镜像内 /bin/tinysh.TNCR 一致）。" data-en="The real 46408-byte artifact (matches /bin/tinysh.TNCR inside the image).">真实的 46408 字节产物（与镜像内 /bin/tinysh.TNCR 一致）。</p>
+            <p data-zh="真实的 104144 字节产物（与镜像内 /bin/tinysh.TNCR 一致）。" data-en="The real 104144-byte artifact (matches /bin/tinysh.TNCR inside the image).">真实的 104144 字节产物（与镜像内 /bin/tinysh.TNCR 一致）。</p>
           </li>
           <li class="card">
             <h3>tinysh.manifest</h3>
@@ -375,8 +375,8 @@ sourcedir /home/pkgrepo</code></pre>
           </li>
           <li class="card card-wide">
             <h3 data-zh="🚧 三个包仍是空壳" data-en="🚧 Three packages are still empty shells">🚧 三个包仍是空壳</h3>
-            <p data-zh="tncr / web-admin-panel / demos 三个目录没有产物，其 manifest 的 sha256 仍是 __BUILD_FILL__ 占位符。因此它们无法被 pkg 真正校验安装 —— 只有 tinysh 目前拥有真实的 46408 字节产物与真实 sha256。"
-               data-en="The tncr / web-admin-panel / demos directories have no artifact, and their manifest sha256 is still the __BUILD_FILL__ placeholder. So they cannot be genuinely verified or installed by pkg — only tinysh currently has a real 46408-byte artifact and a real sha256.">tncr / web-admin-panel / demos 三个目录没有产物，其 manifest 的 sha256 仍是 __BUILD_FILL__ 占位符。因此它们无法被 pkg 真正校验安装 —— 只有 tinysh 目前拥有真实的 46408 字节产物与真实 sha256。</p>
+            <p data-zh="tncr / web-admin-panel / demos 三个目录没有产物，其 manifest 的 sha256 仍是 __BUILD_FILL__ 占位符。因此它们无法被 pkg 真正校验安装 —— 只有 tinysh 目前拥有真实的 104144 字节产物与真实 sha256。"
+               data-en="The tncr / web-admin-panel / demos directories have no artifact, and their manifest sha256 is still the __BUILD_FILL__ placeholder. So they cannot be genuinely verified or installed by pkg — only tinysh currently has a real 104144-byte artifact and a real sha256.">tncr / web-admin-panel / demos 三个目录没有产物，其 manifest 的 sha256 仍是 __BUILD_FILL__ 占位符。因此它们无法被 pkg 真正校验安装 —— 只有 tinysh 目前拥有真实的 104144 字节产物与真实 sha256。</p>
           </li>
         </ul>
       </div>
@@ -385,49 +385,22 @@ sourcedir /home/pkgrepo</code></pre>
     <!-- 8. PACKAGES INVENTORY -->
     <section id="inventory" class="section" aria-labelledby="inventory-title">
       <div class="wrap">
-        <h2 id="inventory-title" data-zh="仓库包一览（4 个 + packages/repo/）" data-en="Packages in the repo (4 of them + packages/repo/)">仓库包一览（4 个 + packages/repo/）</h2>
-        <p class="section-lead" data-zh="packages/ 下目前有 4 个目录。只有 tinysh 是内容完整、带真实产物与真实 sha256 的包；其余三个仍停留在 manifest + README 的骨架阶段。另外新增了可直接当源目录用的 packages/repo/ 模板。"
-                              data-en="There are 4 directories under packages/. Only tinysh is a fully-populated package with a real artifact and a real sha256; the other three are still at the manifest + README skeleton stage. A new packages/repo/ template can be used directly as a source dir.">packages/ 下目前有 4 个目录。只有 tinysh 是内容完整、带真实产物与真实 sha256 的包；其余三个仍停留在 manifest + README 的骨架阶段。另外新增了可直接当源目录用的 packages/repo/ 模板。</p>
+        <h2 id="inventory-title" data-zh="软件包列表：点开看详情" data-en="Package list: click for details">软件包列表：点开看详情</h2>
+        <p class="section-lead" data-zh="packages/ 下每个包都可以点开，展开它的 manifest 字段、产物体积、校验和与逐文件清单。下面的数据直接来自仓库里的 manifest 与构建产物，不是手写的介绍文字。"
+                              data-en="Every package under packages/ is clickable and expands to show its manifest fields, artifact size, checksum and a per-file listing. The data below comes straight from the manifests and build artifacts in the repository, not from hand-written marketing copy.">packages/ 下每个包都可以点开，展开它的 manifest 字段、产物体积、校验和与逐文件清单。下面的数据直接来自仓库里的 manifest 与构建产物，不是手写的介绍文字。</p>
 
-        <div style="overflow:auto; border:1px solid var(--line); border-radius:var(--radius);">
-          <table style="width:100%; border-collapse:collapse; font-size:14px; min-width:520px;">
-            <caption style="caption-side:top; text-align:left; padding:12px 14px; color:var(--muted); font-size:13px;" data-zh="packages/ 目录现状" data-en="packages/ directory status">packages/ 目录现状</caption>
-            <thead>
-              <tr style="background:rgba(255,255,255,.03); text-align:left;">
-                <th scope="col" style="padding:10px 14px; border-bottom:1px solid var(--line); color:#fff;" data-zh="目录" data-en="Directory">目录</th>
-                <th scope="col" style="padding:10px 14px; border-bottom:1px solid var(--line); color:#fff;" data-zh="状态" data-en="Status">状态</th>
-                <th scope="col" style="padding:10px 14px; border-bottom:1px solid var(--line); color:#fff;" data-zh="说明" data-en="Notes">说明</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style="border-bottom:1px solid var(--line);">
-                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">tinysh/</th>
-                <td style="padding:9px 14px; white-space:nowrap; color:var(--good); font-weight:700;">✅ 真实包</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="src/ 完整；tinysh.manifest 的 sha256 已填真实值 b96e52…4535（46408 字节）。" data-en="src/ complete; tinysh.manifest sha256 now holds the real value b96e52…4535 (46408 bytes).">src/ 完整；tinysh.manifest 的 sha256 已填真实值 b96e52…4535（46408 字节）。</td>
-              </tr>
-              <tr style="border-bottom:1px solid var(--line);">
-                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">tncr/</th>
-                <td style="padding:9px 14px; white-space:nowrap; color:var(--warn); font-weight:700;">🚧 骨架</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="只有 tncr.manifest + src/README.md（编译器规划中，sha256 仍是占位）。" data-en="Only tncr.manifest + src/README.md (compiler is planned; sha256 still a placeholder).">只有 tncr.manifest + src/README.md（编译器规划中，sha256 仍是占位）。</td>
-              </tr>
-              <tr style="border-bottom:1px solid var(--line);">
-                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">web-admin-panel/</th>
-                <td style="padding:9px 14px; white-space:nowrap; color:var(--warn); font-weight:700;">🚧 骨架</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="只有 manifest + README，无产物（sha256 占位）。" data-en="Only manifest + README, no artifact (sha256 placeholder).">只有 manifest + README，无产物（sha256 占位）。</td>
-              </tr>
-              <tr style="border-bottom:1px solid var(--line);">
-                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">demos/</th>
-                <td style="padding:9px 14px; white-space:nowrap; color:var(--warn); font-weight:700;">🚧 骨架</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="只有 manifest + README；demos.manifest 新增 programs 段列出 8 个示例程序（hello 214 / count 877 / basic_demo 204 / cpp_demo 339 / minic_demo 500 / net_demo 467 / gui_demo 470 / tiny_demo 238 字节），但无产物。" data-en="Only manifest + README; demos.manifest added a programs section listing 8 example programs (hello 214 / count 877 / basic_demo 204 / cpp_demo 339 / minic_demo 500 / net_demo 467 / gui_demo 470 / tiny_demo 238 bytes), but no artifact.">只有 manifest + README；demos.manifest 新增 programs 段列出 8 个示例程序（hello 214 / count 877 / basic_demo 204 / cpp_demo 339 / minic_demo 500 / net_demo 467 / gui_demo 470 / tiny_demo 238 字节），但无产物。</td>
-              </tr>
-              <tr>
-                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">repo/</th>
-                <td style="padding:9px 14px; white-space:nowrap; color:var(--good); font-weight:700;">✅ 源模板</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="可直接当 sourcedir 使用：tinysh.tncr（真实 46408 字节）+ tinysh.manifest + pkg.conf.example + README.md。" data-en="Usable directly as a sourcedir: tinysh.tncr (real 46408 bytes) + tinysh.manifest + pkg.conf.example + README.md.">可直接当 sourcedir 使用：tinysh.tncr（真实 46408 字节）+ tinysh.manifest + pkg.conf.example + README.md。</td>
-              </tr>
-            </tbody>
-          </table>
+        <div id="pkgcat" class="pkgcat">
+          <div id="pkgcat-list" role="list" aria-label="packages"></div>
+          <div id="pkg-detail" class="pkg-detail" role="region" aria-live="polite" hidden></div>
         </div>
+
+        <noscript>
+          <div class="callout" role="note">
+            <h3 data-zh="需要启用 JavaScript" data-en="JavaScript required">需要启用 JavaScript</h3>
+            <p data-zh="这个交互式包列表依赖 JavaScript 渲染。仓库里的 packages/*/ 目录与 manifest 是纯文本，可直接阅读。"
+               data-en="This interactive package list is rendered with JavaScript. The packages/*/ directories and manifests in the repository are plain text and can be read directly.">这个交互式包列表依赖 JavaScript 渲染。仓库里的 packages/*/ 目录与 manifest 是纯文本，可直接阅读。</p>
+          </div>
+        </noscript>
 
         <h3 data-zh="真实示例：packages/tinysh/tinysh.manifest（逐字，sha256 已填真）✅" data-en="Real example: packages/tinysh/tinysh.manifest (verbatim, sha256 now real) ✅">真实示例：packages/tinysh/tinysh.manifest（逐字，sha256 已填真）✅</h3>
         <div class="code-block" role="img" aria-label="tinysh.manifest 逐字内容">
@@ -436,7 +409,7 @@ version: v0.1
 description: TinyOS Genesis 默认 Shell（/bin/tinysh.tncr）
 dependencies: []
 min_compiler: tncr>=0.1
-sha256: b96e52e09a177363f2e23140e2ea3f508b24e9f683439c1a57b72f6500dd4535
+sha256: a35a67bc938e91434a3c0e2ac86688e14d95ce948f3e2a7eb6442be7fdb02bda
 build:
   entry: src/tinysh.c
   output: /bin/tinysh.tncr
@@ -455,5 +428,6 @@ build:
   </footer>
 
   <script src="app.js" defer></script>
+  <script src="pkgcat.js" defer></script>
 </body>
 </html>
