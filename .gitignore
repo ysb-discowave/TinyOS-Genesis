@@ -27,3 +27,7 @@ __pycache__/
 
 # 本地验收脚本（含硬编码本机路径，不入库）
 _acceptance.py
+
+# packtest 运行时生成的测试盘
+packtest-disk.img
+bootdiag-disk.img

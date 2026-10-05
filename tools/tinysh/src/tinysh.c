@@ -202,6 +202,23 @@ static int cmd_exit(int argc, char **argv) {
 #define PKG_DEF_SRC  "/home/pkgrepo"
 #define PKG_TMP_DIR  "/tmp"
 
+/* ---- .pack 多文件软件包 ----
+ * 大型软件不止一个 TNCR，需要打成 .pack 归档再安装。格式（小端，未压缩）：
+ *   0  "TNPACK"   6B 魔数
+ *   6  u16 ver    版本（=1）
+ *   8  u32 metalen元数据字节数
+ *   12 u32 nfiles 文件数
+ *   16 [元数据]   key=value 行，\0 结尾
+ *   .. [文件表]   每项：u16 namelen, name, u32 size, data[size]
+ * 元数据键：name=包名  desc=描述  install_dir=安装目录
+ *           prog.<名字>=<TNCR 绝对路径>   （写进 /bin/path 供 run 用）
+ *           env.<变量>=<值>               （写进 /bin/path 供 run 查环境）
+ * 注：用户态没有 inflate（内核 inflate 只服务 romfs），故 .pack 存原始字节。*/
+#define PACK_MAGIC   "TNPACK"
+#define PACK_MAGIC_N 6
+#define PACK_VER     1
+#define PATH_REG     "/bin/path"   /* prog.<名>=路径 / env.<变量>=值 */
+
 static int pk_stricmp(const char *a, const char *b) {
     while (*a && *b) {
         char ca = *a, cb = *b;
@@ -253,6 +270,75 @@ static long pkg_read_all(const char *path, char **out) {
     return n;
 }
 
+/* ============ 小端读写辅助（.pack 是二进制结构体） ============ */
+static unsigned rd16(const unsigned char *p) { return (unsigned)p[0] | ((unsigned)p[1] << 8); }
+static unsigned long rd32(const unsigned char *p) {
+    return (unsigned long)p[0] | ((unsigned long)p[1] << 8) |
+           ((unsigned long)p[2] << 16) | ((unsigned long)p[3] << 24);
+}
+static void wr16(unsigned char *p, unsigned v) { p[0] = (unsigned char)(v & 0xFF); p[1] = (unsigned char)((v >> 8) & 0xFF); }
+static void wr32(unsigned char *p, unsigned long v) {
+    p[0] = (unsigned char)(v & 0xFF);       p[1] = (unsigned char)((v >> 8) & 0xFF);
+    p[2] = (unsigned char)((v >> 16) & 0xFF); p[3] = (unsigned char)((v >> 24) & 0xFF);
+}
+
+/* ============ /bin/path 注册表 ============
+ * 统一存键值对，两类：
+ *   prog.<名字>=<TNCR 绝对路径>   程序映射，run 命令查它
+ *   env.<变量名>=<值>            环境变量，pkg install .pack 时写入
+ * 文件不存在视为空表。 */
+
+/* 读整张表到 buf（调用方保证 buf 足够大），返回字节数，缺失返回 0 */
+static int path_reg_read(char *buf, int n) {
+    long r = fs_read(PATH_REG, buf, n - 1);
+    if (r < 0) { buf[0] = 0; return 0; }
+    buf[r] = 0;
+    return (int)r;
+}
+
+/* 在表中查找 key 的值（用 pkg_get_kv），找到返回 0，未找到 -1 */
+static int path_reg_get(const char *key, char *out, int n) {
+    static char buf[16384];
+    int len = path_reg_read(buf, sizeof buf);
+    return pkg_get_kv(buf, len, key, out, n);
+}
+
+/* 覆盖式写回一个 key=value（若 key 已存在则替换该行，否则追加）。
+ * 表不存在则新建。 */
+static int path_reg_set(const char *key, const char *val) {
+    static char buf[16384];
+    static char nb[16384];
+    int len = path_reg_read(buf, sizeof buf);
+    int klen = (int)strlen(key);
+    int w = 0;
+    int replaced = 0;
+    int i = 0;
+    while (i < len) {
+        int line = i;
+        while (i < len && buf[i] != '\n' && buf[i] != '\r' && buf[i] != 0) i++;
+        int ll = i - line;
+        int s = line;
+        while (s < line + ll && (buf[s] == ' ' || buf[s] == '\t')) s++;
+        /* 该行是否是目标 key？ */
+        if ((line + ll) - s > klen && strncmp(buf + s, key, klen) == 0 && buf[s + klen] == '=') {
+            if (!replaced) {
+                w += snprintf(nb + w, sizeof nb - w, "%s=%s\n", key, val);
+                replaced = 1;
+            }
+            /* 已存在则丢弃旧行，写新行 */
+        } else if (ll > 0) {
+            if (w < (int)sizeof nb - 1) { memcpy(nb + w, buf + s, (size_t)ll); w += ll; }
+            if (w < (int)sizeof nb - 1) nb[w++] = '\n';
+        }
+        while (i < len && (buf[i] == '\n' || buf[i] == '\r' || buf[i] == 0)) i++;
+    }
+    if (!replaced && w < (int)sizeof nb - 1)
+        w += snprintf(nb + w, sizeof nb - w, "%s=%s\n", key, val);
+    nb[w] = 0;
+    if (fs_write(PATH_REG, nb, w) != 0) return -E_IO;
+    return 0;
+}
+
 /* 读 /etc/pkg.conf 的一个配置项（缺省值见上方宏） */
 static void pkg_conf_get(const char *key, char *out, int n, const char *def) {
     static char conf[4096];
@@ -292,6 +378,168 @@ static void pkg_conf_ensure(void) {
     fs_write(PKG_CONF, def, (int)strlen(def));
 }
 
+/* ============ .pack 解包安装（供 pkg install 调用） ============ */
+
+/* 确保多级目录存在：逐段创建（vfs_mkdir 只建一层） */
+static int pack_mkdirs(const char *dir) {
+    char tmp[256];
+    int n = (int)strlen(dir);
+    if (n >= (int)sizeof tmp) return -E_INVAL;
+    memcpy(tmp, dir, (size_t)n); tmp[n] = 0;
+    for (int i = 1; i < n; i++) {
+        if (tmp[i] == '/') {
+            tmp[i] = 0;
+            fs_mkdir(tmp);            /* 已存在也无所谓 */
+            tmp[i] = '/';
+        }
+    }
+    fs_mkdir(tmp);
+    return E_OK;
+}
+
+/* 把归档内的一个文件（name + data）写到 dest 目录下。
+ * name 可含子目录（如 bin/cc），先建目录再写。 */
+static int pack_extract_file(const char *destdir, const char *name,
+                             const unsigned char *data, unsigned long size) {
+    char full[512];
+    /* name 含 '/' 时先确保子目录存在 */
+    const char *slash = 0;
+    for (const char *q = name; *q; q++) if (*q == '/') { slash = q; break; }
+    if (slash) {
+        char sub[512];
+        int sublen = (int)(slash - name);
+        if ((int)strlen(destdir) + sublen + 2 < (int)sizeof sub) {
+            snprintf(sub, sizeof sub, "%s/%.*s", destdir, sublen, name);
+            pack_mkdirs(sub);
+        }
+    }
+    snprintf(full, sizeof full, "%s/%s", destdir, name);
+    if (fs_write(full, (const char *)data, (int)size) != 0) return -E_IO;
+    return E_OK;
+}
+
+/* 解包安装一个 .pack 文件。返回 E_OK 或负错误码。 */
+static int pack_install(const char *packpath) {
+    char *raw = 0;
+    long total = pkg_read_all(packpath, &raw);
+    if (total < 0) {
+        printf("pack: cannot read %s\n", packpath);
+        return E_IO;
+    }
+    if (total < 16) { free(raw); printf("pack: file too small\n"); return E_INVAL; }
+    const unsigned char *b = (const unsigned char *)raw;
+
+    /* 校验魔数与版本 */
+    if (memcmp(b, PACK_MAGIC, PACK_MAGIC_N) != 0) {
+        free(raw);
+        printf("pack: bad magic (not a .pack file)\n");
+        return E_INVAL;
+    }
+    unsigned ver = rd16(b + 6);
+    if (ver != PACK_VER) {
+        free(raw);
+        printf("pack: unsupported version %u (expect %d)\n", ver, PACK_VER);
+        return E_INVAL;
+    }
+    unsigned long metalen = rd32(b + 8);
+    unsigned long nfiles   = rd32(b + 12);
+    unsigned long off = 16;
+    if (off + metalen > (unsigned long)total) {
+        free(raw); printf("pack: truncated metadata\n"); return E_INVAL;
+    }
+
+    /* 元数据（key=value 行，\0 结尾） */
+    char meta[4096];
+    unsigned long mlen = metalen < sizeof(meta) - 1 ? metalen : sizeof(meta) - 1;
+    memcpy(meta, b + off, (size_t)mlen);
+    meta[mlen] = 0;
+    off += metalen;
+
+    char pkgname[64] = "", desc[256] = "", installdir[256] = "";
+    pkg_get_kv(meta, (int)mlen, "name", pkgname, sizeof pkgname);
+    pkg_get_kv(meta, (int)mlen, "desc", desc, sizeof desc);
+    if (pkg_get_kv(meta, (int)mlen, "install_dir", installdir, sizeof installdir) != 0)
+        strncpy(installdir, "/opt/pkg", sizeof installdir - 1);
+
+    printf("pack: installing %s", pkgname[0] ? pkgname : "(unnamed)");
+    if (desc[0]) printf(" -- %s", desc);
+    printf("\n");
+    printf("pack: %lu file(s) -> %s\n", nfiles, installdir);
+
+    pack_mkdirs(installdir);
+
+    /* 逐个文件释放 */
+    unsigned long ok = 0;
+    for (unsigned long i = 0; i < nfiles; i++) {
+        if (off + 2 > (unsigned long)total) { printf("pack: truncated file table\n"); break; }
+        unsigned nlen = rd16(b + off); off += 2;
+        if (off + nlen + 4 > (unsigned long)total) { printf("pack: truncated file entry\n"); break; }
+        char name[256];
+        unsigned cl = nlen < sizeof(name) - 1 ? nlen : sizeof(name) - 1;
+        memcpy(name, b + off, (size_t)cl); name[cl] = 0;
+        off += nlen;
+        unsigned long fsz = rd32(b + off); off += 4;
+        if (off + fsz > (unsigned long)total) { printf("pack: truncated file data (%s)\n", name); break; }
+        if (pack_extract_file(installdir, name, b + off, fsz) == E_OK) {
+            printf("  + %-28s %lu bytes\n", name, fsz);
+            ok++;
+        } else {
+            printf("  ! %-28s write failed\n", name);
+        }
+        off += fsz;
+    }
+
+    /* 处理 env.<VAR>=<值> 与 prog.<名>=<路径>：写进 /bin/path 注册表 */
+    int nenv = 0, nprog = 0;
+    {
+        /* 逐行扫描元数据（找 env. / prog. 前缀） */
+        int i = 0;
+        while (i < (int)mlen) {
+            int line = i;
+            while (i < (int)mlen && meta[i] != '\n' && meta[i] != '\r' && meta[i] != 0) i++;
+            int ll = i - line;
+            int s = line;
+            while (s < line + ll && (meta[s] == ' ' || meta[s] == '\t')) s++;
+            int eq = -1;
+            for (int q = s; q < line + ll; q++) if (meta[q] == '=') { eq = q; break; }
+            if (eq > s) {
+                int klen = eq - s;
+                char key[160], val[512];
+                if (klen < (int)sizeof key) {
+                    memcpy(key, meta + s, (size_t)klen); key[klen] = 0;
+                    int vs = eq + 1, ve = line + ll;
+                    while (vs < ve && (meta[vs] == ' ' || meta[vs] == '\t')) vs++;
+                    int vl = ve - vs;
+                    if (vl >= (int)sizeof val) vl = (int)sizeof val - 1;
+                    memcpy(val, meta + vs, (size_t)vl); val[vl] = 0;
+                    if (strncmp(key, "env.", 4) == 0) {
+                        if (path_reg_set(key, val) == E_OK) { nenv++; }
+                    } else if (strncmp(key, "prog.", 5) == 0) {
+                        if (path_reg_set(key, val) == E_OK) { nprog++; }
+                    }
+                }
+            }
+            while (i < (int)mlen && (meta[i] == '\n' || meta[i] == '\r' || meta[i] == 0)) i++;
+        }
+    }
+    if (nenv)  printf("pack: registered %d env var(s) in %s\n", nenv, PATH_REG);
+    if (nprog) printf("pack: registered %d program mapping(s) in %s\n", nprog, PATH_REG);
+
+    /* 登记到 /etc/packages.d/<name> 便于 pkg list/info 识别 */
+    if (pkgname[0]) {
+        fs_mkdir(PKG_DB_DIR);
+        char recp[256]; snprintf(recp, sizeof recp, "%s/%s", PKG_DB_DIR, pkgname);
+        char rec[512];
+        int rl = snprintf(rec, sizeof rec, "name=%s\nkind=pack\ninstall_dir=%s\nfiles=%lu\n",
+                         pkgname, installdir, ok);
+        fs_write(recp, rec, rl);
+    }
+
+    free(raw);
+    printf("pack: done: %lu/%lu file(s) installed.\n", ok, nfiles);
+    return E_OK;
+}
+
 static void pkg_print_help(void) {
     printf("pkg: package manager (v0.1, local + FTP + HTTP source)\n");
     printf("usage:\n");
@@ -309,6 +557,11 @@ static void pkg_print_help(void) {
     printf("    3) HTTP source (repo_host/repo_port/repo_path)\n");
     printf("  each source serves <name>.manifest + <name>.tncr; the manifest's\n");
     printf("  sha256 is checked against the downloaded binary before install.\n");
+    printf("  multi-file .pack packages:\n");
+    printf("    pkg install <name>.pack    unpack a .pack archive into its\n");
+    printf("                               install_dir, register env./prog. in\n");
+    printf("                               /bin/path, then run <prog> to launch.\n");
+    printf("    build one with: pack <srcdir> -o <name>.pack --name <name>\n");
     printf("  The default HTTP source is the tinyos-pkg-down Worker mirror, which\n");
     printf("  terminates TLS at the edge and serves plain HTTP, so the kernel\n");
     printf("  /etc/pkg.conf:\n");
@@ -527,6 +780,26 @@ static int cmd_pkg(int argc, char **argv) {
             return E_ARGC;
         }
         const char *name = argv[2];
+        /* .pack 多文件包：本地源目录里存在同名 .pack 就解包安装 */
+        {
+            int nl = (int)strlen(name);
+            if (nl > 5 && pk_stricmp(name + nl - 5, ".pack") == 0) {
+                char sd0[256];
+                pkg_conf_get("sourcedir", sd0, sizeof sd0, PKG_DEF_SRC);
+                char pp[512];
+                snprintf(pp, sizeof pp, "%s/%s", sd0, name);
+                char probe;
+                if (fs_read(pp, &probe, 1) >= 0) {
+                    printf("pack: found local package %s\n", pp);
+                    return pack_install(pp);
+                }
+                /* 也允许直接给路径 */
+                if (strchr(name, '/') && fs_read(name, &probe, 1) >= 0)
+                    return pack_install(name);
+                printf("pack: %s not found in source dir %s\n", name, sd0);
+                return E_NOENT;
+            }
+        }
         char sd[256], fh[64], fp[16], fu[64], fpass[64], fpath[256];
         char gh[256], gport[16], gpath[256];
         char pxh[256], pxp[16];
@@ -668,6 +941,213 @@ static int cmd_pkg(int argc, char **argv) {
     return E_OK;
 }
 
+/* 前向声明：cmd_run 用到后面才定义的辅助函数 */
+static void join_args(int argc, char **argv, char *buf, int n);
+static int  pkg_prog_exists(const char *name);
+
+/* 按 fs_list 报告的实际大小精确分配并读取一个文件。
+ * 不用 pkg_read_all（它固定 malloc 1MB/文件，多文件大包会撑爆用户态 arena）。
+ * 读不满 size 也接受（以实际返回字节为准）。失败返回 NULL。 */
+static void *pack_read_sized(const char *path, long hint, long *out_n) {
+    long cap = hint > 0 ? hint : 0;
+    if (cap <= 0) cap = 4096;                 /* 未知大小给个起步值 */
+    unsigned char *buf = (unsigned char *)malloc((unsigned long)cap + 1);
+    if (!buf) return 0;
+    long n = fs_read(path, (char *)buf, (int)cap);
+    if (n < 0) {
+        /* hint 不准（可能偏小）：翻倍重试一次 */
+        if (cap < (1 << 22)) {
+            unsigned char *nb = (unsigned char *)malloc((unsigned long)cap * 2 + 1);
+            if (nb) {
+                long n2 = fs_read(path, (char *)nb, (int)(cap * 2));
+                if (n2 >= 0) { *out_n = n2; return nb; }
+                free(nb);
+            }
+        }
+        free(buf);
+        return 0;
+    }
+    *out_n = n;
+    return buf;
+}
+
+/* ===================== pack —— 把一个目录打成 .pack 软件包 =====================
+ * 用法：
+ *   pack <srcdir> [-o out.pack] [--name NAME] [--dir DIR] [--env K=V]...
+ *           [--prog NAME=PATH]...
+ * 把 srcdir 下的所有文件（递归，含子目录）打包成一个 .pack。
+ * 元数据里写入 name / install_dir / env.* / prog.*，安装器据此还原。
+ * 注：用户态无 inflate，故归档不压缩，存原始字节。 */
+static int cmd_pack(int argc, char **argv) {
+    if (argc < 2) {
+        printf("usage: pack <srcdir> [-o out.pack] [--name NAME] [--dir DIR]\n");
+        printf("           [--env K=V]... [--prog NAME=PATH]...\n");
+        printf("example:\n");
+        printf("  pack /home/myapp -o myapp.pack --name myapp --dir /opt/myapp \\\n");
+        printf("       --prog myapp=/opt/myapp/bin/myapp.TNCR --env PATH=/opt/myapp/bin\n");
+        return E_ARGC;
+    }
+    const char *srcdir = argv[1];
+    const char *outname = 0;
+    char pkgname[64] = "", installdir[256] = "";
+    /* 先扫参数 */
+    char metas[2048]; int mw = 0;
+    for (int i = 2; i < argc; i++) {
+        if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+            outname = argv[++i];
+        } else if (strcmp(argv[i], "--name") == 0 && i + 1 < argc) {
+            snprintf(pkgname, sizeof pkgname, "%s", argv[++i]);
+        } else if (strcmp(argv[i], "--dir") == 0 && i + 1 < argc) {
+            snprintf(installdir, sizeof installdir, "%s", argv[++i]);
+        } else if (strcmp(argv[i], "--env") == 0 && i + 1 < argc) {
+            mw += snprintf(metas + mw, sizeof metas - mw, "env.%s\n", argv[++i]);
+        } else if (strcmp(argv[i], "--prog") == 0 && i + 1 < argc) {
+            mw += snprintf(metas + mw, sizeof metas - mw, "prog.%s\n", argv[++i]);
+        }
+    }
+    if (!pkgname[0]) {
+        /* 默认包名 = 源目录最后一段 */
+        const char *base = srcdir;
+        for (const char *q = srcdir; *q; q++) if (*q == '/') base = q + 1;
+        snprintf(pkgname, sizeof pkgname, "%s", base);
+    }
+    if (!installdir[0])
+        snprintf(installdir, sizeof installdir, "/opt/%s", pkgname);
+    if (!outname) {
+        static char ob[256];
+        snprintf(ob, sizeof ob, "/tmp/%s.pack", pkgname);
+        outname = ob;
+    }
+
+    /* 先收集文件到内存（名字+内容）。小工具，够用即可。 */
+    typedef struct { char name[256]; unsigned char *data; unsigned long size; } pfile;
+    static pfile files[64];
+    int nfiles = 0;
+
+    /* 递归遍历：vfs 提供 fs_list，但为简单起见只支持一层 + 显式子目录。
+     * 这里手动处理一层子目录以覆盖 "bin/" "lib/" 常见布局。 */
+    fs_entry *ents = 0; int nent = 0;
+    if (fs_list(srcdir, &ents, &nent) != 0) {
+        printf("pack: cannot list %s\n", srcdir);
+        return E_NOENT;
+    }
+    for (int i = 0; i < nent && nfiles < 64; i++) {
+        /* 关键：fs_list 返回的是后端共享的静态缓冲，内层再调 fs_list 会覆盖它。
+         * 所以先把本层用到的名字/类型拷出来，再进子目录。 */
+        char ename[64];
+        snprintf(ename, sizeof ename, "%s", ents[i].name);
+        int edir = ents[i].is_dir;
+        char full[512];
+        snprintf(full, sizeof full, "%s/%s", srcdir, ename);
+        if (edir) {
+            /* 一层子目录：把里面的文件以 子/文件 形式收入 */
+            fs_entry *sub = 0; int nsub = 0;
+            if (fs_list(full, &sub, &nsub) != 0) continue;
+            for (int j = 0; j < nsub && nfiles < 64; j++) {
+                if (sub[j].is_dir) continue;         /* 只收一层 */
+                char sname[64];
+                snprintf(sname, sizeof sname, "%s", sub[j].name);  /* 同理先拷贝 */
+                char sfull[512];
+                snprintf(sfull, sizeof sfull, "%s/%s", full, sname);
+                long sz = 0;
+                unsigned char *d = (unsigned char *)pack_read_sized(sfull, sub[j].size, &sz);
+                if (!d) continue;
+                snprintf(files[nfiles].name, sizeof files[nfiles].name, "%s/%s", ename, sname);
+                files[nfiles].data = d;
+                files[nfiles].size = (unsigned long)sz;
+                nfiles++;
+            }
+        } else {
+            long sz = 0;
+            unsigned char *d = (unsigned char *)pack_read_sized(full, ents[i].size, &sz);
+            if (!d) continue;
+            snprintf(files[nfiles].name, sizeof files[nfiles].name, "%s", ename);
+            files[nfiles].data = d;
+            files[nfiles].size = (unsigned long)sz;
+            nfiles++;
+        }
+    }
+    if (nfiles == 0) {
+        printf("pack: no files found in %s\n", srcdir);
+        return E_NOENT;
+    }
+
+    /* 组装元数据区：name / install_dir + 用户给的 env./prog. */
+    char meta[2048]; int w = 0;
+    w += snprintf(meta + w, sizeof meta - w, "name=%s\n", pkgname);
+    w += snprintf(meta + w, sizeof meta - w, "install_dir=%s\n", installdir);
+    if (mw > 0 && mw < (int)sizeof meta - w) { memcpy(meta + w, metas, (size_t)mw); w += mw; }
+    meta[w] = 0;
+    unsigned long metalen = (unsigned long)w;
+
+    /* 计算总大小并分配输出缓冲 */
+    unsigned long total = 16 + metalen;
+    for (int i = 0; i < nfiles; i++) {
+        total += 2 + strlen(files[i].name) + 4 + files[i].size;
+    }
+    unsigned char *ob = (unsigned char *)malloc((unsigned long)total);
+    if (!ob) { printf("pack: out of memory\n"); return E_IO; }
+
+    unsigned long o = 0;
+    memcpy(ob + o, PACK_MAGIC, PACK_MAGIC_N); o += PACK_MAGIC_N;
+    wr16(ob + o, PACK_VER); o += 2;
+    wr32(ob + o, metalen); o += 4;
+    wr32(ob + o, (unsigned long)nfiles); o += 4;
+    memcpy(ob + o, meta, (size_t)metalen); o += metalen;
+    for (int i = 0; i < nfiles; i++) {
+        unsigned nl = (unsigned)strlen(files[i].name);
+        wr16(ob + o, nl); o += 2;
+        memcpy(ob + o, files[i].name, nl); o += nl;
+        wr32(ob + o, files[i].size); o += 4;
+        memcpy(ob + o, files[i].data, (size_t)files[i].size); o += files[i].size;
+    }
+
+    if (fs_write(outname, (const char *)ob, (int)o) != 0) {
+        printf("pack: failed to write %s\n", outname);
+        return E_IO;
+    }
+    printf("pack: wrote %s (%d file(s), %lu bytes) -> %s\n", outname, nfiles, o, outname);
+    printf("pack: install with: pkg install %s.pack\n", pkgname);
+    printf("pack: (place %s in the source dir, default %s)\n", outname, PKG_DEF_SRC);
+
+    free(ob);
+    for (int i = 0; i < nfiles; i++) free(files[i].data);
+    return E_OK;
+}
+
+/* ===================== run —— 查 /bin/path 执行已注册程序 =====================
+ * 用法：run <name> [args...]
+ * 在 /bin/path 里找 prog.<name>=<TNCR路径>，找到就用 prog_exec 执行。
+ * 找不到时回退到 /bin/<name>.TNCR（pkg 单文件安装的程序）。 */
+static int cmd_run(int argc, char **argv) {
+    if (argc < 2) {
+        printf("usage: run <name> [args...]\n");
+        printf("looks up prog.<name> in %s and executes the mapped TNCR.\n", PATH_REG);
+        return E_ARGC;
+    }
+    const char *name = argv[1];
+    char key[160];
+    snprintf(key, sizeof key, "prog.%s", name);
+    char path[512]; path[0] = 0;
+    if (path_reg_get(key, path, sizeof path) == 0 && path[0]) {
+        char args[LINE_MAX];
+        join_args(argc, argv, args, sizeof args);
+        prog_exec(path, args);
+        return E_OK;
+    }
+    /* 回退：/bin/<name>.TNCR */
+    if (pkg_prog_exists(name)) {
+        char p2[512];
+        snprintf(p2, sizeof p2, "%s/%s.TNCR", PKG_BIN_DIR, name);
+        char args[LINE_MAX];
+        join_args(argc, argv, args, sizeof args);
+        prog_exec(p2, args);
+        return E_OK;
+    }
+    printf("run: no program '%s' in %s (and no /bin/%s.TNCR)\n", name, PATH_REG, name);
+    return E_NOENT;
+}
+
 /* ===================== 命令注册表 =====================
  * 注意：desc / usage 是会打到 VGA 文本模式（CP437 字形表）上的用户可见文案，
  * 必须纯 ASCII —— 汉字会乱码且占 3 格把整行顶出 80 列。 */
@@ -692,6 +1172,8 @@ static const cmd_t g_cmds[] = {
     {"clear",    cmd_clear,    "clear",                     "clear the screen"},
     {"exit",     cmd_exit,     "exit",                      "leave the tinysh session"},
     {"pkg",      cmd_pkg,      "pkg <subcommand>",          "package manager (list/info/verify/install/remove/source)"},
+    {"pack",     cmd_pack,     "pack <dir> [opts]",         "bundle a directory into a .pack multi-file package"},
+    {"run",      cmd_run,      "run <name> [args]",         "run a program registered in /bin/path"},
 };
 
 const cmd_t *cmd_find(const char *name) {

@@ -111,9 +111,18 @@ int strcmp(const char *a, const char *b) {
     return (int)(u8)*a - (int)(u8)*b;
 }
 int strncmp(const char *a, const char *b, unsigned long n) {
-    while (n-- && *a && *a == *b) { a++; b++; }
-    if (n == 0) return 0;
-    return (int)(u8)*a - (int)(u8)*b;
+    /* 注意：不能用 while(n-- && ...) + if(n==0) 的写法。
+     * 后置递减会在退出循环时把 n 减到下溢值，导致 n==0 判定失效，
+     * 于是"前 n 字符全匹配"这种最常见的情况反而返回非零
+     * （如 strncmp("name=x","name",4) 返回 'x'-0），把所有
+     * key=value 解析全部判成"不匹配"。这里显式先判 n>0。 */
+    while (n > 0) {
+        if (*a != *b) return (int)(u8)*a - (int)(u8)*b;
+        if (*a == 0) return 0;          /* 两边同时到串尾 */
+        a++; b++;
+        n--;
+    }
+    return 0;
 }
 static int in_set(int c, const char *set) {
     const char *p = set;
