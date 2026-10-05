@@ -1,0 +1,26 @@
+# 构建产物
+build/
+*.exe
+*.tncr
+*.o
+*.obj
+*.elf
+*.bin
+*.img
+
+# 运行时生成的磁盘镜像
+tinyos-disk.img
+serial.log
+_build.log
+_build.exit
+_bu.log
+
+# 编辑器 / OS
+.DS_Store
+*.swp
+.vscode/
+.idea/
+__pycache__/
+
+# 本地验收脚本（含硬编码本机路径，不入库）
+_acceptance.py

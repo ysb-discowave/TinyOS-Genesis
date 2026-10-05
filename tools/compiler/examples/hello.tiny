@@ -1,0 +1,21 @@
+/* ============================================================
+ * TinyOS sample program 5: hello.tiny
+ * Language: TinyLang (TinyOS's own teaching language)
+ * Build: tcc hello.tiny -o tiny_demo.TNCR --lang tiny
+ * ============================================================ */
+
+// TinyLang syntax: let / assignment / print "text" / printn expr / if / while / gui
+let n = 5;
+print "--- TinyLang demo ---";
+print "Countdown starts:";
+
+while n > 0 {
+    printn n;
+    n = n - 1;
+}
+
+print "Liftoff!";
+
+if n == 0 {
+    print "Loop ended normally.";
+}

@@ -1,0 +1,24 @@
+/* ============================================================
+ * TinyOS sample program 7: calc.minic
+ * Language: MiniC (a reduced C subset with print / printn primitives)
+ * Build: tcc calc.minic -o minic_demo.TNCR --lang minic
+ * ============================================================ */
+#include "api_user.h"
+
+static int fib(int n) {
+    if (n < 2) return n;
+    return fib(n - 1) + fib(n - 2);
+}
+
+void user_main(tinyos_api_t *api) {
+    print("--- MiniC demo ---");
+    print("First 10 Fibonacci numbers:");
+    for (int i = 0; i < 10; i++) {
+        printn(fib(i));
+    }
+
+    int sum = 0;
+    for (int i = 1; i <= 100; i++) sum = sum + i;
+    print("Sum 1..100 =");
+    printn(sum);
+}

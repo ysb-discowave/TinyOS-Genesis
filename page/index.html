@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="TinyOS Genesis v0.1 — a from-scratch, bootable bare-metal x86 (i386) operating system." />
+  <title>TinyOS Genesis v0.1</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main" data-zh="跳到主内容" data-en="Skip to main content">跳到主内容</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="#hero" aria-label="TinyOS Genesis home">
+        <svg class="brand-logo" width="28" height="28" viewBox="0 0 32 32" role="img" aria-hidden="true">
+          <rect x="6" y="6" width="20" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>
+          <rect x="12" y="12" width="8" height="8" rx="1" fill="currentColor"/>
+          <g stroke="currentColor" stroke-width="2">
+            <line x1="16" y1="2" x2="16" y2="6"/><line x1="16" y1="26" x2="16" y2="30"/>
+            <line x1="2" y1="16" x2="6" y2="16"/><line x1="26" y1="16" x2="30" y2="16"/>
+            <line x1="6" y1="6" x2="9" y2="9"/><line x1="26" y1="6" x2="23" y2="9"/>
+            <line x1="6" y1="26" x2="9" y2="23"/><line x1="26" y1="26" x2="23" y2="23"/>
+          </g>
+        </svg>
+        <span class="brand-name">TinyOS&nbsp;Genesis</span>
+      </a>
+
+      <nav class="site-nav" aria-label="主导航">
+        <a href="#hero" data-zh="首页" data-en="Home">首页</a>
+        <a href="#size" data-zh="体积" data-en="Size">体积</a>
+        <a href="#demo" data-zh="演示" data-en="Demo">演示</a>
+        <a href="#matrix" data-zh="能力" data-en="Capabilities">能力</a>
+        <a href="#arch" data-zh="架构" data-en="Architecture">架构</a>
+        <a href="#stack" data-zh="技术栈" data-en="Stack">技术栈</a>
+        <a href="#start" data-zh="上手" data-en="Quick Start">上手</a>
+        <a href="#roadmap" data-zh="路线图" data-en="Roadmap">路线图</a>
+      </nav>
+
+      <button id="lang-toggle" class="lang-toggle" type="button"
+              data-zh="EN" data-en="中文" aria-label="切换语言 / Switch language">EN</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- HERO -->
+    <section id="hero" class="hero" aria-labelledby="hero-title">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="kicker" data-zh="裸机 x86 操作系统 · 2026 首个版本" data-en="Bare-metal x86 OS · first release 2026">裸机 x86 操作系统 · 2026 首个版本</p>
+          <h1 id="hero-title">TinyOS&nbsp;Genesis <span class="badge" title="v0.1">v0.1</span></h1>
+          <p class="lede" data-zh="从零手写的裸机 x86 操作系统 —— 可引导、可运行、真正能在真机与 QEMU 上跑起来。内核、引导器、用户程序全部自己造。"
+                     data-en="A from-scratch bare-metal x86 operating system — bootable, runnable, and genuinely running on real hardware and QEMU. Kernel, bootloader and user programs, all built from the ground up.">从零手写的裸机 x86 操作系统 —— 可引导、可运行、真正能在真机与 QEMU 上跑起来。内核、引导器、用户程序全部自己造。</p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="#demo" data-zh="观看终端演示" data-en="View terminal demo">观看终端演示</a>
+            <a class="btn btn-ghost" href="#start" data-zh="快速上手" data-en="Quick start">快速上手</a>
+          </div>
+          <ul class="hero-facts" aria-label="关键事实">
+            <li><strong>i386</strong> <span data-zh="保护模式" data-en="protected mode">保护模式</span></li>
+            <li><strong>56&nbsp;KB</strong> <span data-zh="压缩只读文件系统" data-en="compressed romfs">压缩只读文件系统</span></li>
+            <li><strong>27/27</strong> <span data-zh="端到端自动化测试通过" data-en="end-to-end tests passing">端到端自动化测试通过</span></li>
+          </ul>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <div class="art-frame">
+            <pre class="art-term">TinyOS Genesis
+  boot &gt; kernel
+  kernel &gt; VFS/romfs
+  VFS &gt; TNCR loader
+  TNCR &gt; tinysh / lua
+<span class="art-cursor">_</span></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SIZE -->
+    <section id="size" class="section" aria-labelledby="size-title">
+      <div class="wrap">
+        <h2 id="size-title" data-zh="体积对比：更小，也更轻" data-en="Size comparison: smaller, lighter">体积对比：更小，也更轻</h2>
+        <p class="section-lead" data-zh="上一代同类系统体积臃肿；Genesis 通过手写内核与压缩只读文件系统，把体积压到了原来的零头。镜像本身约 612 KB，一张软盘都装不满。"
+                               data-en="The previous generation was bloated; Genesis shrinks to a fraction via a hand-written kernel and a compressed read-only filesystem. The bootable image is ~612 KB — less than a single floppy.">上一代同类系统体积臃肿；Genesis 通过手写内核与压缩只读文件系统，把体积压到了原来的零头。镜像本身约 612 KB，一张软盘都装不满。</p>
+
+        <div class="chart" role="img" aria-label="体积对比条形图：romfs 从上一代 336 KB 降到 56 KB；内核从上一代 1.24 MB 降到约 615 KB。">
+          <div class="chart-row">
+            <div class="chart-label"><span data-zh="只读文件系统 romfs（压缩后）" data-en="Read-only filesystem romfs (compressed)">只读文件系统 romfs（压缩后）</span></div>
+            <div class="bars">
+              <div class="bar bar-old" style="width:100%">
+                <span class="bar-val">336 KB <span class="bar-tag" data-zh="上一代" data-en="prev gen">上一代</span></span>
+              </div>
+              <div class="bar bar-new" style="width:16.7%">
+                <span class="bar-val">56 KB</span>
+              </div>
+            </div>
+            <div class="chart-delta" data-zh="↓ 约 6× 更小" data-en="↓ ~6× smaller">↓ 约 6× 更小</div>
+          </div>
+
+          <div class="chart-row">
+            <div class="chart-label"><span data-zh="内核 kernel.elf" data-en="Kernel kernel.elf">内核 kernel.elf</span></div>
+            <div class="bars">
+              <div class="bar bar-old" style="width:100%">
+                <span class="bar-val">1.24 MB <span class="bar-tag" data-zh="上一代" data-en="prev gen">上一代</span></span>
+              </div>
+              <div class="bar bar-new" style="width:48.4%">
+                <span class="bar-val">~615 KB</span>
+              </div>
+            </div>
+            <div class="chart-delta" data-zh="↓ 约 2× 更小" data-en="↓ ~2× smaller">↓ 约 2× 更小</div>
+          </div>
+
+          <div class="chart-row">
+            <div class="chart-label"><span data-zh="可引导镜像 tinyos.img" data-en="Bootable image tinyos.img">可引导镜像 tinyos.img</span></div>
+            <div class="bars">
+              <div class="bar bar-new solo" style="width:48.2%">
+                <span class="bar-val">~612 KB</span>
+              </div>
+            </div>
+            <div class="chart-delta" data-zh="单镜像" data-en="single image">单镜像</div>
+          </div>
+        </div>
+
+        <p class="chart-note" data-zh="条形长度按同类指标内的最大值归一化，数值标签为真实大小。"
+                           data-en="Bar lengths are normalized to the maximum within each metric; the labels show the real sizes.">条形长度按同类指标内的最大值归一化，数值标签为真实大小。</p>
+      </div>
+    </section>
+
+    <!-- DEMO -->
+    <section id="demo" class="section section-term" aria-labelledby="demo-title">
+      <div class="wrap">
+        <h2 id="demo-title" data-zh="终端演示" data-en="Terminal demo">终端演示</h2>
+        <p class="section-lead" data-zh="下面是 tinysh 在 QEMU 串口里的真实交互。逐字回放由脚本驱动，无需人工点击。"
+                               data-en="Below is a real tinysh session over the QEMU serial port. The playback is script-driven — no manual clicks.">下面是 tinysh 在 QEMU 串口里的真实交互。逐字回放由脚本驱动，无需人工点击。</p>
+
+        <div class="term" role="img" aria-label="tinysh 终端会话实录">
+          <div class="term-bar" aria-hidden="true">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="term-title">tinysh — QEMU serial</span>
+          </div>
+          <pre id="demo" class="term-body" tabindex="0" aria-label="终端输出（打字机效果由 app.js 填充）"></pre>
+        </div>
+
+        <div class="callout" role="note">
+          <h3 data-zh="为什么界面文案一律是英文？" data-en="Why is all on-screen text English?">为什么界面文案一律是英文？</h3>
+          <p data-zh="图形桌面运行在 VGA 80×25 文本模式，字形表是 CP437（IBM PC 字符集），根本没有汉字字形；而且一个汉字要占 3 个字符格，会直接把一行顶出 80 列。这是有说服力的工程约束，不是偷懒。"
+             data-en="The desktop runs in VGA 80×25 text mode using the CP437 (IBM PC) glyph table, which has no Chinese glyphs; and a single Chinese character takes 3 cells, which would push a line past the 80-column limit. That is a real engineering constraint, not laziness.">图形桌面运行在 VGA 80×25 文本模式，字形表是 CP437（IBM PC 字符集），根本没有汉字字形；而且一个汉字要占 3 个字符格，会直接把一行顶出 80 列。这是有说服力的工程约束，不是偷懒。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- MATRIX -->
+    <section id="matrix" class="section" aria-labelledby="matrix-title">
+      <div class="wrap">
+        <h2 id="matrix-title" data-zh="能力矩阵" data-en="Capability matrix">能力矩阵</h2>
+        <p class="section-lead" data-zh="v0.1 已经内置的能力。tinysh 是真正的 TNCR 用户程序，不是内核内建；Lua 解释器也是编译成 TNCR 跑在用户态。"
+                               data-en="What v0.1 already ships with. tinysh is a real TNCR user program, not kernel-builtin; the Lua interpreter is also compiled to TNCR and runs in user space.">v0.1 已经内置的能力。tinysh 是真正的 TNCR 用户程序，不是内核内建；Lua 解释器也是编译成 TNCR 跑在用户态。</p>
+
+        <ul class="matrix">
+          <li class="card">
+            <h3 data-zh="文件系统" data-en="Filesystem">文件系统</h3>
+            <p data-zh="VFS 抽象 + 压缩只读 romfs；tinysh 提供 ls / cd / pwd / cat / mkdir / rm / touch。" data-en="VFS abstraction + compressed read-only romfs; tinysh offers ls / cd / pwd / cat / mkdir / rm / touch.">VFS 抽象 + 压缩只读 romfs；tinysh 提供 ls / cd / pwd / cat / mkdir / rm / touch。</p>
+          </li>
+          <li class="card">
+            <h3 data-zh="进程" data-en="Processes">进程</h3>
+            <p data-zh="用户态进程模型，tinysh 可用 ps 查看、kill 终止；sysinfo 报告进程数与内存。" data-en="User-space process model; tinysh can list with ps and terminate with kill; sysinfo reports process count and memory.">用户态进程模型，tinysh 可用 ps 查看、kill 终止；sysinfo 报告进程数与内存。</p>
+          </li>
+          <li class="card">
+            <h3 data-zh="硬件寄存器" data-en="Hardware registers">硬件寄存器</h3>
+            <p data-zh="devlist / readdev / writedev 直访 ISA 设备寄存器：com1 0x3F8、pit 0x40、kbd 0x60、vga 0x3D4。" data-en="devlist / readdev / writedev directly access ISA device registers: com1 0x3F8, pit 0x40, kbd 0x60, vga 0x3D4.">devlist / readdev / writedev 直访 ISA 设备寄存器：com1 0x3F8、pit 0x40、kbd 0x60、vga 0x3D4。</p>
+          </li>
+          <li class="card">
+            <h3 data-zh="图形桌面" data-en="Graphical desktop">图形桌面</h3>
+            <p data-zh="VGA 80×25 文本模式 + PS/2 键盘 + PS/2 鼠标。" data-en="VGA 80×25 text mode + PS/2 keyboard + PS/2 mouse.">VGA 80×25 文本模式 + PS/2 键盘 + PS/2 鼠标。</p>
+          </li>
+          <li class="card">
+            <h3 data-zh="网络" data-en="Networking">网络</h3>
+            <p data-zh="e1000 网卡驱动，可在用户态做网络 I/O。" data-en="e1000 NIC driver, enabling user-space network I/O.">e1000 网卡驱动，可在用户态做网络 I/O。</p>
+          </li>
+          <li class="card">
+            <h3 data-zh="Lua 5.4.7" data-en="Lua 5.4.7">Lua 5.4.7</h3>
+            <p data-zh="解释器编译成 TNCR，跑在用户态：可 REPL，也可 lua /home/x.lua 执行脚本。已实现。" data-en="Interpreter compiled to TNCR, running in user space: REPL or lua /home/x.lua to run scripts. Implemented.">解释器编译成 TNCR，跑在用户态：可 REPL，也可 lua /home/x.lua 执行脚本。已实现。</p>
+          </li>
+          <li class="card card-wide">
+            <h3 data-zh="tinysh 用户态 shell" data-en="tinysh user-space shell">tinysh 用户态 shell</h3>
+            <p data-zh="19 条命令：help version sysinfo date ls cd pwd cat mkdir rm touch ps kill devlist readdev writedev echo clear exit。已通过 27 项端到端自动化测试。"
+               data-en="19 commands: help version sysinfo date ls cd pwd cat mkdir rm touch ps kill devlist readdev writedev echo clear exit. Passed 27 end-to-end automated tests.">19 条命令：help version sysinfo date ls cd pwd cat mkdir rm touch ps kill devlist readdev writedev echo clear exit。已通过 27 项端到端自动化测试。</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ARCH -->
+    <section id="arch" class="section" aria-labelledby="arch-title">
+      <div class="wrap">
+        <h2 id="arch-title" data-zh="架构分层" data-en="Architecture layers">架构分层</h2>
+        <p class="section-lead" data-zh="从按下电源到用户程序，数据是这样一层层流下来的。全程用 HTML + CSS 绘制，无图片。"
+                               data-en="From power-on to a user program, data flows down these layers. Drawn entirely with HTML + CSS — no images.">从按下电源到用户程序，数据是这样一层层流下来的。全程用 HTML + CSS 绘制，无图片。</p>
+
+        <ol class="arch">
+          <li class="arch-node">
+            <span class="arch-tag" data-zh="引导器" data-en="Bootloader">引导器</span>
+            <span class="arch-detail">NASM 汇编</span>
+          </li>
+          <li class="arch-arrow" aria-hidden="true">→</li>
+          <li class="arch-node">
+            <span class="arch-tag" data-zh="内核" data-en="Kernel">内核</span>
+            <span class="arch-detail">zig cc · freestanding ELF</span>
+          </li>
+          <li class="arch-arrow" aria-hidden="true">→</li>
+          <li class="arch-node">
+            <span class="arch-tag" data-zh="VFS / romfs" data-en="VFS / romfs">VFS / romfs</span>
+            <span class="arch-detail" data-zh="压缩只读文件系统" data-en="compressed read-only fs">压缩只读文件系统</span>
+          </li>
+          <li class="arch-arrow" aria-hidden="true">→</li>
+          <li class="arch-node">
+            <span class="arch-tag" data-zh="TNCR 加载器" data-en="TNCR loader">TNCR 加载器</span>
+            <span class="arch-detail" data-zh="自定义可执行格式" data-en="custom executable format">自定义可执行格式</span>
+          </li>
+          <li class="arch-arrow" aria-hidden="true">→</li>
+          <li class="arch-node arch-node-userspace">
+            <span class="arch-tag" data-zh="用户程序" data-en="User programs">用户程序</span>
+            <span class="arch-detail">tinysh · Lua 5.4.7</span>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- STACK -->
+    <section id="stack" class="section" aria-labelledby="stack-title">
+      <div class="wrap">
+        <h2 id="stack-title" data-zh="技术栈" data-en="Tech stack">技术栈</h2>
+        <p class="section-lead" data-zh="每一个环节都按真实情况列出来；没有 JVM、没有 Java、没有 Docker，也没有在系统里跑 C/C++ 工具链。"
+                               data-en="Every piece is listed as it really is; no JVM, no Java, no Docker, and no C/C++ toolchain running inside the OS.">每一个环节都按真实情况列出来；没有 JVM、没有 Java、没有 Docker，也没有在系统里跑 C/C++ 工具链。</p>
+
+        <ul class="stack">
+          <li class="card">
+            <h3>NASM</h3>
+            <p data-zh="引导器用 NASM 汇编编写。" data-en="The bootloader is written in NASM assembly.">引导器用 NASM 汇编编写。</p>
+          </li>
+          <li class="card">
+            <h3>zig cc</h3>
+            <p><code>-target x86-freestanding -mgeneral-regs-only</code></p>
+            <p data-zh="内核与工具链交叉编译为 freestanding ELF。" data-en="Kernel and toolchain are cross-compiled to freestanding ELF.">内核与工具链交叉编译为 freestanding ELF。</p>
+          </li>
+          <li class="card">
+            <h3>TNCR</h3>
+            <p data-zh="用户程序打包成自定义 TNCR 格式，由 TNCR 加载器载入用户态。" data-en="User programs are packaged in the custom TNCR format and loaded into user space by the TNCR loader.">用户程序打包成自定义 TNCR 格式，由 TNCR 加载器载入用户态。</p>
+          </li>
+          <li class="card">
+            <h3>Python（宿主机侧）</h3>
+            <p data-zh="构建由仓库内的 Python 脚本驱动；脚本本身运行在开发机上，不是操作系统的一部分。" data-en="The build is driven by Python scripts in the repo; the scripts run on the dev machine, not inside the OS.">构建由仓库内的 Python 脚本驱动；脚本本身运行在开发机上，不是操作系统的一部分。</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- START -->
+    <section id="start" class="section" aria-labelledby="start-title">
+      <div class="wrap">
+        <h2 id="start-title" data-zh="快速上手（Windows）" data-en="Quick start (Windows)">快速上手（Windows）</h2>
+        <p class="section-lead" data-zh="构建与运行都由仓库内的 Python 脚本驱动；脚本名以 scripts/ 目录为准。下面是可参照的入口命令。"
+                               data-en="Build and run are both driven by Python scripts in the repo; script names follow the scripts/ directory. The entry commands below are a reference.">构建与运行都由仓库内的 Python 脚本驱动；脚本名以 scripts/ 目录为准。下面是可参照的入口命令。</p>
+
+        <div class="code-block">
+          <pre aria-label="构建与启动命令"><code># 1) 在仓库根目录，用 Python 脚本构建可引导镜像
+python scripts/build.py
+
+# 2) 启动到 QEMU（串口自动化测试已内置）
+python scripts/run.py
+
+# 3) 镜像产物：tinyos.img（约 612 KB）</code></pre>
+        </div>
+        <p class="chart-note" data-zh="提示：构建需要本机装有 zig 与 NASM；全部测试由 QEMU 串口自动化驱动，27/27 通过，无需人工点击。"
+                           data-en="Note: the build needs zig and NASM installed locally; all tests run via QEMU serial automation, 27/27 passing, no manual clicks.">提示：构建需要本机装有 zig 与 NASM；全部测试由 QEMU 串口自动化驱动，27/27 通过，无需人工点击。</p>
+      </div>
+    </section>
+
+    <!-- ROADMAP -->
+    <section id="roadmap" class="section" aria-labelledby="roadmap-title">
+      <div class="wrap">
+        <h2 id="roadmap-title" data-zh="路线图" data-en="Roadmap">路线图</h2>
+        <p class="section-lead" data-zh="清楚区分「已完成」与「计划中」。v0.1 已交付，下面列的是方向，不是已落地的功能。"
+                               data-en="A clear split between “done” and “planned”. v0.1 is shipped; what follows are directions, not landed features.">清楚区分「已完成」与「计划中」。v0.1 已交付，下面列的是方向，不是已落地的功能。</p>
+
+        <div class="roadmap">
+          <div class="roadmap-col">
+            <h3 class="done-head" data-zh="✅ 已完成 · v0.1" data-en="✅ Done · v0.1">✅ 已完成 · v0.1</h3>
+            <ul class="done-list">
+              <li data-zh="可引导 i386 保护模式镜像（tinyos.img）" data-en="Bootable i386 protected-mode image (tinyos.img)">可引导 i386 保护模式镜像（tinyos.img）</li>
+              <li data-zh="tinysh 用户态 shell，19 条命令，27 项端到端测试通过" data-en="tinysh user-space shell, 19 commands, 27 end-to-end tests passing">tinysh 用户态 shell，19 条命令，27 项端到端测试通过</li>
+              <li data-zh="Lua 5.4.7 解释器（TNCR，用户态）" data-en="Lua 5.4.7 interpreter (TNCR, user space)">Lua 5.4.7 解释器（TNCR，用户态）</li>
+              <li data-zh="VFS / 压缩 romfs、进程、硬件寄存器直访" data-en="VFS / compressed romfs, processes, direct hardware-register access">VFS / 压缩 romfs、进程、硬件寄存器直访</li>
+              <li data-zh="VGA 文本桌面 + PS/2 键鼠、e1000 网卡驱动" data-en="VGA text desktop + PS/2 keyboard/mouse, e1000 NIC driver">VGA 文本桌面 + PS/2 键鼠、e1000 网卡驱动</li>
+            </ul>
+          </div>
+          <div class="roadmap-col">
+            <h3 class="plan-head" data-zh="🧭 计划中" data-en="🧭 Planned">🧭 计划中</h3>
+            <ul class="plan-list">
+              <li data-zh="真实磁盘多盘支持（已有 ATA 多盘抽象层）" data-en="Real multi-disk support (ATA multi-disk abstraction already exists)">真实磁盘多盘支持（已有 ATA 多盘抽象层）</li>
+              <li data-zh="图形改进（更高分辨率 / 更多色彩）" data-en="Graphics improvements (higher resolution / more color)">图形改进（更高分辨率 / 更多色彩）</li>
+              <li data-zh="更多 TNCR 运行时与用户程序" data-en="More TNCR runtimes and user programs">更多 TNCR 运行时与用户程序</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <p><strong>TinyOS Genesis v0.1</strong> — <span data-zh="从零手写的裸机 x86 操作系统" data-en="a from-scratch bare-metal x86 OS">从零手写的裸机 x86 操作系统</span></p>
+      <p class="footer-meta" data-zh="内核、引导器、用户程序全部自研 · 2026" data-en="kernel, bootloader and user programs all built in-house · 2026">内核、引导器、用户程序全部自研 · 2026</p>
+    </div>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

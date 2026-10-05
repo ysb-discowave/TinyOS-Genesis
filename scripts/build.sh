@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# TinyOS Genesis 构建脚本（首发行版 v0.1）
+# TinyOS Genesis 构建脚本（独立发行版 v0.1）
+#
+# 本仓库自包含：不依赖任何外部仓库，内核源码在 src/kernel，
+# 用户程序构建链在 tools/，Lua 源码在 thirdparty/lua。
 #
 # 用法：
-#   ./scripts/build.sh host        # 编译宿主机可运行版 tinysh（开发自测）
-#   ./scripts/build.sh tinyos     # 交叉编译 /bin/tinysh.tncr（需 TinyOS 2.0 工具链）
-#   ./scripts/build.sh test        # 运行 host 自测会话
+#   ./scripts/build.sh system     # 完整构建：用户程序 -> romfs -> 内核 -> 可启动镜像
+#   ./scripts/build.sh host       # 编译宿主机可运行版 tinysh（开发自测）
+#   ./scripts/build.sh tinyos     # 只交叉编译 tinysh.TNCR
+#   ./scripts/build.sh test       # 运行 host 自测会话
 #
 # 默认（无参数）= host
 set -e
@@ -16,6 +20,21 @@ ZIG="${ZIG:-zig}"
 mode="${1:-host}"
 
 case "$mode" in
+  system)
+    # 完整构建。Windows 上内核链接/打包交给 build.ps1（需要 nasm + zig）。
+    # 这里先跑用户程序链（生成 src/kernel/romfs.c），再调 build.ps1。
+    echo "[build] user programs (tinysh / Lua) -> romfs"
+    python3 "$ROOT/tools/build_users.py"
+    if command -v powershell.exe >/dev/null 2>&1; then
+      echo "[build] kernel + bootable image (build.ps1)"
+      powershell.exe -ExecutionPolicy Bypass -File "$ROOT/build.ps1"
+    else
+      echo "error: build.ps1 needs PowerShell (Windows)." >&2
+      echo "       On Linux/macOS use: zig cc / nasm directly (see docs/)." >&2
+      exit 1
+    fi
+    echo "[build] done -> $ROOT/tinyos.img"
+    ;;
   host)
     echo "[build] host tinysh (kernel_api_host.c)"
     "$ZIG" cc -std=c11 -O2 -Wall -Wextra \
@@ -23,16 +42,20 @@ case "$mode" in
     echo "[build] -> build/tinysh_host"
     ;;
   tinyos)
-    # 产品构建：链接 kernel_api_tinyos.c，定义 TINYOS_USER 启用 user_main 入口。
-    # 需提供：TinyOS 2.0 内核 include 目录（-DTINYOS_KERNEL_ROOT=...）
-    #        以及 TNCR stdio shim（将 printf/fgets 映射到 tinyos_api_t）。
-    : "${TINYOS_KERNEL_ROOT:?set TINYOS_KERNEL_ROOT to TinyOS-2.0/kernel/include}"
-    echo "[build] tinyos tinysh.tncr (kernel_api_tinyos.c)"
-    "$ZIG" cc -std=c11 -O2 -DTINYOS_USER \
-      -DTINYOS_KERNEL_ROOT="$TINYOS_KERNEL_ROOT" \
-      -I"$TINYOS_KERNEL_ROOT" \
-      -o build/tinysh.tncr src/tinysh/tinysh.c src/tinysh/kernel_api_tinyos.c
-    echo "[build] -> build/tinysh.tncr"
+    # 产品构建：链接 kernel_api_tinyos.c 产出 /bin/tinysh.TNCR。
+    # 内核头文件就在本仓库 src/kernel/include，无需外部 TinyOS-2.0。
+    KERNEL_INC="$ROOT/src/kernel/include"
+    : "${ZIG:?set ZIG to the zig executable}"
+    if [ ! -d "$KERNEL_INC" ]; then
+      echo "error: kernel headers not found at $KERNEL_INC" >&2
+      exit 1
+    fi
+    echo "[build] tinyos tinysh.TNCR (kernel_api_tinyos.c)"
+    # 真正的 TNCR 打包由 tools/tinysh/build_tinysh.py 完成
+    # （它会调 zig 交叉编译 + elf32_flatten + pack_tncr）。
+    "$ZIG" version >/dev/null
+    python3 "$ROOT/tools/tinysh/build_tinysh.py"
+    echo "[build] -> tinysh.TNCR (see \$TINYOS_OUT/tncr/)"
     ;;
   test)
     mkdir -p build
@@ -41,7 +64,7 @@ case "$mode" in
     ./build/tinysh_host < src/tinysh/test_session.txt
     ;;
   *)
-    echo "usage: $0 {host|tinyos|test}" >&2
+    echo "usage: $0 {system|host|tinyos|test}" >&2
     exit 1
     ;;
 esac
