@@ -264,20 +264,43 @@ static void pkg_conf_get(const char *key, char *out, int n, const char *def) {
     }
 }
 
+/* 首次使用时把默认配置（含 GitHub raw 源）写入 /etc/pkg.conf，
+ * 这样 `pkg source` 能看到、也能被用户 `pkg source set` 覆盖。 */
+static void pkg_conf_ensure(void) {
+    static char conf[4096];
+    long r = fs_read(PKG_CONF, conf, (int)sizeof(conf) - 1);
+    if (r >= 0) return;   /* 已存在，保留用户改动 */
+    const char *def =
+        "sourcedir=/home/pkgrepo\n"
+        "ftp_host=10.0.2.2\n"
+        "ftp_port=21\n"
+        "ftp_user=anonymous\n"
+        "ftp_pass=\n"
+        "ftp_path=/packages/repo\n"
+        "repo_host=raw.githubusercontent.com\n"
+        "repo_port=80\n"
+        "repo_path=/ysb-discowave/TinyOS-Genesis/main/packages/repo\n";
+    fs_write(PKG_CONF, def, (int)strlen(def));
+}
+
 static void pkg_print_help(void) {
-    printf("pkg: package manager (v0.1, local + FTP source)\n");
+    printf("pkg: package manager (v0.1, local + FTP + GitHub raw source)\n");
     printf("usage:\n");
     printf("  pkg list                 list installed packages\n");
     printf("  pkg info <name>          show details of a package\n");
     printf("  pkg verify [name]        verify sha256 of package(s)\n");
-    printf("  pkg install <name>       install from local source dir or FTP\n");
+    printf("  pkg install <name>       install from local source, FTP, or GitHub\n");
     printf("  pkg remove <name>        remove an installed package\n");
     printf("  pkg source [set <path>]  show / set the source dir\n");
     printf("  pkg help                 this message\n");
     printf("notes:\n");
-    printf("  install reads <name>.manifest + <name>.tncr from the source dir,\n");
-    printf("  checks sha256, then writes /bin/<name>.TNCR and registers it.\n");
-    printf("  if the local source is missing, it falls back to the FTP source.\n");
+    printf("  install looks up the package in this order:\n");
+    printf("    1) local source dir (sourcedir)\n");
+    printf("    2) FTP source (ftp_host/ftp_port/ftp_path)\n");
+    printf("    3) GitHub raw source (repo_host/repo_port/repo_path)\n");
+    printf("  each source serves <name>.manifest + <name>.TNCR; the manifest's\n");
+    printf("  sha256 is checked against the downloaded binary before install.\n");
+    printf("  GitHub raw needs no TLS: http://<repo_host><repo_path>/<name>.TNCR\n");
 }
 
 static int cmd_pkg(int argc, char **argv) {
@@ -285,6 +308,7 @@ static int cmd_pkg(int argc, char **argv) {
         pkg_print_help();
         return E_OK;
     }
+    pkg_conf_ensure();
     const char *sub = argv[1];
 
     if (pk_stricmp(sub, "list") == 0) {
@@ -457,15 +481,21 @@ static int cmd_pkg(int argc, char **argv) {
             return E_OK;
         }
         char sd[256], fh[64], fp[16], fu[64], fpass[64], fpath[256];
+        char gh[256], gport[16], gpath[256];
         pkg_conf_get("sourcedir", sd, sizeof sd, PKG_DEF_SRC);
         pkg_conf_get("ftp_host", fh, sizeof fh, "10.0.2.2");
         pkg_conf_get("ftp_port", fp, sizeof fp, "21");
         pkg_conf_get("ftp_user", fu, sizeof fu, "anonymous");
         pkg_conf_get("ftp_pass", fpass, sizeof fpass, "");
         pkg_conf_get("ftp_path", fpath, sizeof fpath, "/packages/repo");
+        pkg_conf_get("repo_host", gh, sizeof gh, "raw.githubusercontent.com");
+        pkg_conf_get("repo_port", gport, sizeof gport, "80");
+        pkg_conf_get("repo_path", gpath, sizeof gpath,
+                     "/ysb-discowave/TinyOS-Genesis/main/packages/repo");
         printf("pkg: source dir : %s\n", sd);
         printf("pkg: ftp source : %s:%s user=%s pass=%s path=%s\n",
                fh, fp, fu, fpass, fpath);
+        printf("pkg: github raw: %s:%s path=%s\n", gh, gport, gpath);
         return E_OK;
     }
 
@@ -476,23 +506,28 @@ static int cmd_pkg(int argc, char **argv) {
         }
         const char *name = argv[2];
         char sd[256], fh[64], fp[16], fu[64], fpass[64], fpath[256];
+        char gh[256], gport[16], gpath[256];
         pkg_conf_get("sourcedir", sd, sizeof sd, PKG_DEF_SRC);
         pkg_conf_get("ftp_host", fh, sizeof fh, "10.0.2.2");
         pkg_conf_get("ftp_port", fp, sizeof fp, "21");
         pkg_conf_get("ftp_user", fu, sizeof fu, "anonymous");
         pkg_conf_get("ftp_pass", fpass, sizeof fpass, "");
         pkg_conf_get("ftp_path", fpath, sizeof fpath, "/packages/repo");
+        pkg_conf_get("repo_host", gh, sizeof gh, "raw.githubusercontent.com");
+        pkg_conf_get("repo_port", gport, sizeof gport, "80");
+        pkg_conf_get("repo_path", gpath, sizeof gpath,
+                     "/ysb-discowave/TinyOS-Genesis/main/packages/repo");
 
         char mpath[512];
         char bpath[512];
-        int from_ftp = 0;
+        int from_net = 0;   /* 0=local, 1=ftp, 2=github */
 
-        /* 先查本地源目录 */
+        /* 1) 本地源目录 */
         snprintf(mpath, sizeof mpath, "%s/%s.manifest", sd, name);
         static char md[8192];
         long mlen = fs_read(mpath, md, (int)sizeof md - 1);
         if (mlen < 0) {
-            /* 本地没有 -> 试 FTP 源 */
+            /* 2) FTP 源 */
             fs_mkdir(PKG_TMP_DIR);
             char rmt_man[512], rmt_tnc[512];
             int port = atoi(fp);
@@ -501,19 +536,35 @@ static int cmd_pkg(int argc, char **argv) {
             snprintf(mpath, sizeof mpath, "%s/pkg_%s.manifest", PKG_TMP_DIR, name);
             snprintf(bpath, sizeof bpath, "%s/pkg_%s.tncr", PKG_TMP_DIR, name);
             printf("pkg: trying FTP source %s:%d ...\n", fh, port);
-            if (net_ftp_fetch(fh, port, fu, fpass, rmt_man, mpath) != 0) {
-                printf("pkg: manifest not found locally and FTP fetch failed: %s\n", name);
-                return E_NOENT;
+            if (net_ftp_fetch(fh, port, fu, fpass, rmt_man, mpath) == 0 &&
+                (mlen = fs_read(mpath, md, (int)sizeof md - 1)) >= 0 &&
+                net_ftp_fetch(fh, port, fu, fpass, rmt_tnc, bpath) == 0) {
+                from_net = 1;
+            } else {
+                if (mlen >= 0) fs_remove(mpath);
+                /* 3) GitHub raw 源：免手动克隆，新增的优先直连源 */
+                char mbuf[4096]; int mlen2 = 0;
+                char gman[512], gbin[512];
+                snprintf(gman, sizeof gman, "%s/%s.manifest", gpath, name);
+                printf("pkg: trying GitHub raw %s:%s ...\n", gh, gport);
+                if (net_http_get(gh, atoi(gport), gman, mbuf, (int)sizeof mbuf, &mlen2) == 0
+                    && mlen2 > 0 && mlen2 < (int)sizeof md) {
+                    memcpy(md, mbuf, (size_t)mlen2); mlen = mlen2;
+                    snprintf(bpath, sizeof bpath, "%s/pkg_%s.TNCR", PKG_TMP_DIR, name);
+                    snprintf(gbin, sizeof gbin, "%s/%s.TNCR", gpath, name);
+                    if (net_http_file(gh, atoi(gport), gbin, bpath) == 0) {
+                        from_net = 2;
+                    } else {
+                        printf("pkg: failed to fetch binary via GitHub: %s\n", name);
+                    }
+                } else {
+                    printf("pkg: not found locally, via FTP, or on GitHub: %s\n", name);
+                }
             }
-            mlen = fs_read(mpath, md, (int)sizeof md - 1);
-            if (mlen < 0) { printf("pkg: failed to read fetched manifest\n"); return E_IO; }
-            if (net_ftp_fetch(fh, port, fu, fpass, rmt_tnc, bpath) != 0) {
-                printf("pkg: failed to fetch package binary via FTP: %s\n", name);
-                fs_remove(mpath);
-                return E_IO;
-            }
-            from_ftp = 1;
-        } else {
+        }
+        if (mlen < 0) return E_NOENT;   /* 三种源都没拿到 manifest */
+
+        if (from_net == 0) {
             /* 本地源二进制：优先小写 .tncr，回退大写 .TNCR */
             snprintf(bpath, sizeof bpath, "%s/%s.tncr", sd, name);
             static char probe[4];
@@ -528,14 +579,14 @@ static int cmd_pkg(int argc, char **argv) {
         char act[65];
         if (net_sha256_file(bpath, act, sizeof act) != 0) {
             printf("pkg: cannot read package binary: %s\n", bpath);
-            if (from_ftp) { fs_remove(mpath); fs_remove(bpath); }
+            if (from_net) { fs_remove(mpath); fs_remove(bpath); }
             return E_IO;
         }
         if (exp[0]) {
             if (pk_stricmp(act, exp) != 0) {
                 printf("pkg: sha256 mismatch: %s\n", name);
                 printf("  expected %s\n  actual   %s\n", exp, act);
-                if (from_ftp) { fs_remove(mpath); fs_remove(bpath); }
+                if (from_net) { fs_remove(mpath); fs_remove(bpath); }
                 return E_IO;
             }
         } else {
@@ -546,14 +597,14 @@ static int cmd_pkg(int argc, char **argv) {
         char *bd = 0; long bsz = pkg_read_all(bpath, &bd);
         if (bsz < 0) {
             printf("pkg: failed to read package binary: %s\n", bpath);
-            if (from_ftp) { fs_remove(mpath); fs_remove(bpath); }
+            if (from_net) { fs_remove(mpath); fs_remove(bpath); }
             return E_IO;
         }
         char binp[256]; snprintf(binp, sizeof binp, "%s/%s.TNCR", PKG_BIN_DIR, name);
         if (fs_write(binp, bd, (int)bsz) != 0) {
             printf("pkg: failed to write %s (permission?)\n", binp);
             free(bd);
-            if (from_ftp) { fs_remove(mpath); fs_remove(bpath); }
+            if (from_net) { fs_remove(mpath); fs_remove(bpath); }
             return E_PERM;
         }
         free(bd);
@@ -564,7 +615,7 @@ static int cmd_pkg(int argc, char **argv) {
         if (fs_write(recp, md, (int)mlen) != 0)
             printf("pkg: warning: installed but failed to write record %s\n", recp);
 
-        if (from_ftp) { fs_remove(mpath); fs_remove(bpath); }
+        if (from_net) { fs_remove(mpath); fs_remove(bpath); }
 
         char ver[32]; ver[0] = 0;
         pkg_get_kv(md, (int)mlen, "version", ver, sizeof ver);

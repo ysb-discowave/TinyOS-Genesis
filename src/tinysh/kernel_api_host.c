@@ -17,6 +17,22 @@
 #include <signal.h>
 #include <time.h>
 
+/* 宿主后端用标准 socket 真正联网（仅离线冒烟测试用，不进产品 TNCR）。 */
+#ifdef _WIN32
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+#  define HOST_CLOSE(s)    closesocket(s)
+#  define HOST_SSIZE_T     int
+#else
+#  include <sys/socket.h>
+#  include <netinet/in.h>
+#  include <arpa/inet.h>
+#  include <netdb.h>
+#  include <unistd.h>
+#  define HOST_CLOSE(s)    close(s)
+#  define HOST_SSIZE_T     ssize_t
+#endif
+
 /* uname() 是 POSIX 的，MinGW / 某些沙箱 libc 没有 sys/utsname.h。
  * 缺了就退化成只报 "host"，sysinfo 仍然可用。 */
 #if defined(__unix__) || defined(__APPLE__)
@@ -251,6 +267,97 @@ int net_ftp_fetch(const char *host, int port, const char *user,
     (void)host; (void)port; (void)user; (void)pass; (void)remote; (void)local;
     fprintf(stderr, "net_ftp_fetch: not available on host build\n");
     return -E_IO;
+}
+
+/* ===================== 网络（宿主：标准 socket 真连） ===================== */
+/* 跨 chunk 查找 "\r\n\r\n"（响应头结束符），state 在多次调用间保持。
+ * 返回该序列之后第一个字节的下标，没找到返回 -1。 */
+static int find_crlfcrlf(const char *buf, int n, int *state) {
+    for (int i = 0; i < n; i++) {
+        char c = buf[i];
+        if (*state == 0)      { if (c == '\r') *state = 1; }
+        else if (*state == 1) { if (c == '\n') *state = 2; else if (c == '\r') *state = 1; else *state = 0; }
+        else if (*state == 2) { if (c == '\r') *state = 3; else if (c == '\n') *state = 2; else *state = 0; }
+        else /* 3 */           { if (c == '\n') return i + 1; else if (c == '\r') *state = 1; else *state = 0; }
+    }
+    return -1;
+}
+
+/* 真正的 HTTP/1.1 GET（Connection: close）。buf!=0 时把 body 写进 buf（最多 max，
+ * 仅适用小文件如 manifest）；localfile!=0 时把 body 流写入文件（大包）。
+ * 二者有且只有一个非 0。返回 0 成功。 */
+static int host_http_get(const char *host, int port, const char *path,
+                        char *buf, int max, int *out_len, const char *localfile) {
+#ifdef _WIN32
+    WSADATA wd; if (WSAStartup(MAKEWORD(2,2), &wd) != 0) return -E_IO;
+    struct addrinfo hints, *res = 0;
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET; hints.ai_socktype = SOCK_STREAM;
+    char portstr[16]; snprintf(portstr, sizeof portstr, "%d", port);
+    if (getaddrinfo(host, portstr, &hints, &res) != 0) return -E_IO;
+    int s = (int)socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (s < 0) { freeaddrinfo(res); return -E_IO; }
+    if (connect(s, res->ai_addr, (int)res->ai_addrlen) != 0) { HOST_CLOSE(s); freeaddrinfo(res); return -E_IO; }
+    freeaddrinfo(res);
+#else
+    struct hostent *he = gethostbyname(host);
+    if (!he) return -E_IO;
+    struct sockaddr_in sa; memset(&sa, 0, sizeof sa);
+    sa.sin_family = AF_INET; sa.sin_port = htons((unsigned short)port);
+    memcpy(&sa.sin_addr, he->h_addr, (size_t)he->h_length);
+    int s = (int)socket(AF_INET, SOCK_STREAM, 0);
+    if (s < 0) return -E_IO;
+    if (connect(s, (struct sockaddr *)&sa, sizeof sa) != 0) { HOST_CLOSE(s); return -E_IO; }
+#endif
+
+    char req[512];
+    int rl = snprintf(req, sizeof req,
+        "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: TinyOS-Genesis/0.1\r\n"
+        "Accept: */*\r\nConnection: close\r\n\r\n", path, host);
+    if (send(s, req, rl, 0) != rl) { HOST_CLOSE(s); return -E_IO; }
+
+    FILE *f = 0;
+    if (localfile) { f = fopen(localfile, "wb"); if (!f) { HOST_CLOSE(s); return -E_IO; } }
+
+    char rbuf[8192];
+    int st = 0, found = 0, body_out = 0, got_any = 0;
+    for (;;) {
+        HOST_SSIZE_T n = recv(s, rbuf, sizeof rbuf, 0);
+        if (n <= 0) break;
+        got_any = 1;
+        if (!found) {
+            int p = find_crlfcrlf(rbuf, (int)n, &st);
+            if (p >= 0) {
+                found = 1;
+                int bl = (int)n - p;
+                const char *body = rbuf + p;
+                if (f) fwrite(body, 1, (size_t)bl, f);
+                else if (buf && body_out < max) {
+                    int c = bl < max - body_out ? bl : max - body_out;
+                    memcpy(buf + body_out, body, (size_t)c); body_out += c;
+                }
+            }
+        } else {
+            if (f) fwrite(rbuf, 1, (size_t)n, f);
+            else if (buf && body_out < max) {
+                int c = (int)n < max - body_out ? (int)n : max - body_out;
+                memcpy(buf + body_out, rbuf, (size_t)c); body_out += c;
+            }
+        }
+    }
+    HOST_CLOSE(s);
+    if (f) { fclose(f); }
+    if (out_len) *out_len = body_out;
+    return got_any ? 0 : -E_IO;
+}
+
+int net_http_get(const char *host, int port, const char *path,
+                 void *buf, int max, int *out_len) {
+    return host_http_get(host, port, path, (char *)buf, max, out_len, 0);
+}
+int net_http_file(const char *host, int port, const char *path,
+                  const char *local) {
+    return host_http_get(host, port, path, 0, 0, 0, local);
 }
 
 /* ===================== 进程 ===================== */

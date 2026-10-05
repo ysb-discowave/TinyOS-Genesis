@@ -219,3 +219,20 @@ int k_prog_exec(const char *path, char *args, int n) {
     shell_set_arg(args ? args : "");
     return tncr_run(path, proc_current_session());
 }
+
+/* ================================================================
+ * http 扩展：薄封装 src/kernel/net/http.c 的最小 HTTP/1.1 客户端。
+ * pkg 用它们从 GitHub raw 源拉包。用户态经 tinyos_api_t 的 http_get /
+ * http_get_file 访问，不能直接碰内核网络栈。
+ * ================================================================ */
+#include "http.h"
+
+int k_http_get(const char *host, int port, const char *path,
+               void *buf, int max, int *out_len) {
+    return http_get(host, port, path, buf, max, out_len);
+}
+
+int k_http_get_file(const char *host, int port, const char *path,
+                    const char *local) {
+    return http_get_file(host, port, path, local);
+}

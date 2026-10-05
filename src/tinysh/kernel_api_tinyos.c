@@ -250,6 +250,20 @@ int net_ftp_fetch(const char *host, int port, const char *user,
     return g_api->ftp_get(host, port, user, pass, remote, abs_local);
 }
 
+int net_http_get(const char *host, int port, const char *path,
+                void *buf, int max, int *out_len) {
+    if (!g_api) return -E_IO;
+    return g_api->http_get(host, port, path, buf, max, out_len);
+}
+
+int net_http_file(const char *host, int port, const char *path,
+                 const char *local) {
+    if (!g_api) return -E_IO;
+    char abs_local[512];
+    resolve_path(local, abs_local, sizeof abs_local);
+    return g_api->http_get_file(host, port, path, abs_local);
+}
+
 /* ------------------------------------------------------------------ */
 /* 命令查找链：把 tinysh 转发请求转调内核 tinyos_api_t                  */
 /* ------------------------------------------------------------------ */

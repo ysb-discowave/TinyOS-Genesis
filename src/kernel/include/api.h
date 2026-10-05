@@ -128,6 +128,16 @@ typedef struct tinyos_api {
     int  (*kcmd_exists)(const char *name);   /* 1=是内核命令 0=不是（纯查询，不执行） */
     int  (*kcmd_exec)(const char *name, char *args, int n);  /* 把 name + args 交给 shell_exec */
     int  (*prog_exec)(const char *path, char *args, int n);   /* 跑 /bin 下的 TNCR 程序 */
+
+    /* ================================================================
+     * Genesis v0.1 http 扩展（追加在末尾，已在磁盘上的旧 TNCR 不受影响）。
+     * 最小 HTTP/1.1 客户端：pkg 直接从 GitHub raw 源拉包，省去手动克隆。
+     * 必须与 tools/compiler/api_user.h 完全一致。
+     * ================================================================ */
+    int  (*http_get)(const char *host, int port, const char *path,
+                     void *buf, int max, int *out_len);
+    int  (*http_get_file)(const char *host, int port, const char *path,
+                          const char *local);   /* 分块下载整文件到本地 VFS 路径 */
 } tinyos_api_t;
 
 /* 用户程序入口（由 TNCR 加载器调用） */
@@ -160,5 +170,11 @@ int  k_sha256_file(const char *path, char *out, int n);
 int  k_cmd_exists(const char *name);                 /* 纯查询：name 是否为内核命令 */
 int  k_cmd_exec(const char *name, char *args, int n); /* 拼成命令行交给 shell_exec */
 int  k_prog_exec(const char *path, char *args, int n);/* 跑 /bin 下的 TNCR 程序 */
+
+/* ---- Genesis v0.1 http 扩展（见 tinyos_api_t 末尾字段）---- */
+int  k_http_get(const char *host, int port, const char *path,
+                void *buf, int max, int *out_len);    /* 薄封装 http_get */
+int  k_http_get_file(const char *host, int port, const char *path,
+                     const char *local);              /* 薄封装 http_get_file */
 
 #endif

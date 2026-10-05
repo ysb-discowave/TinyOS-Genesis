@@ -221,4 +221,8 @@ tinyos_api_t g_api = {
     .kcmd_exists   = k_cmd_exists,
     .kcmd_exec     = k_cmd_exec,
     .prog_exec     = k_prog_exec,
+
+    /* ---- Genesis v0.1 http 扩展（pkg 从 GitHub raw 源拉包）---- */
+    .http_get      = k_http_get,
+    .http_get_file = k_http_get_file,
 };

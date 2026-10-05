@@ -48,6 +48,14 @@ int  net_sha256_file(const char *path, char *out, int n);
 /* FTP 下载：远端 -> 本地 VFS；返回 0 成功（宿主后端返回错误） */
 int  net_ftp_fetch(const char *host, int port, const char *user,
                    const char *pass, const char *remote, const char *local);
+/* HTTP GET：把响应体写入 buf（最多 max 字节），*out_len = 实际字节数。
+ * 返回 0 成功（宿主后端用标准 socket 连，返回真实结果）。 */
+int  net_http_get(const char *host, int port, const char *path,
+                  void *buf, int max, int *out_len);
+/* HTTP 分块下载整文件到本地路径 local（用于大包，避免用户态 malloc 大块）。
+ * 返回 0 成功，负数错误码。 */
+int  net_http_file(const char *host, int port, const char *path,
+                   const char *local);
 
 /* ---- 进程管理 ---- */
 void proc_list_print(void);
