@@ -5,7 +5,7 @@
 ## 1. 官方软件源
 
 ```
-https://raw.githubusercontent.com/ysb-discowave/tinyos-genesis/main/packages
+https://raw.githubusercontent.com/ysb-discowave/TinyOS-Genesis/main/packages
 ```
 
 （`ysb-discowave` 为官方源账号。）
@@ -57,3 +57,54 @@ build:
 - `tncr` —— 编译器 / 运行时（规划中）
 - `web-admin-panel` —— 官方 Web 管理面板示例
 - `demos` —— 演示脚本集合
+
+## 6. 本地软件源目录（sourcedir）
+
+v0.1 的内核没有 HTTP 客户端，因此 `pkg install` **只从本地源目录读取**，
+不联网。源目录由 `/etc/pkg.conf` 的 `sourcedir` 字段决定，缺省为
+`/home/pkgrepo`（可用 `pkg source set <path>` 修改）。
+
+源目录里每个包必须同时提供两个文件：
+
+```
+<name>.manifest     # 包描述与构建规则（YAML，见第 3 节）
+<name>.tncr         # 已构建好的原生可执行（也可叫 <name>.TNCR，install 会回退识别）
+```
+
+`pkg install <name>` 的流程：在 `sourcedir` 下找到 `<name>.manifest` 与
+`<name>.[tT]NCR` → 校验 sha256 → 写入 `/bin/<name>.TNCR` → 登记到
+`/etc/packages.d/<name>`。
+
+本仓库提供了可直接复制的源目录模板：`packages/repo/`（含 `tinysh.manifest`
++ `tinysh.tncr` + `pkg.conf.example` + `README.md`）。把它整体拷到
+TinyOS 的 `/home/pkgrepo` 后，`pkg install tinysh` 即可工作。
+
+## 7. install 的 sha256 校验
+
+`install` 会从 manifest 的 `sha256` 字段取出期望哈希，对源目录里的
+`<name>.[tT]NCR` 计算实际 SHA256 并比对：
+
+- 一致：继续安装。
+- 不一致：报错 `pkg: sha256 mismatch` 并中止，**不会**写入 `/bin`。
+- manifest 没有 `sha256`（例如仍为占位符 `__BUILD_FILL__`）：打印
+  `warning: no sha256 in manifest, skipping verification` 后仍然安装，
+  但不做校验。
+
+因此发布一个可安装的包时，务必把真实 `.tncr` 的 sha256 回填进
+manifest 与 `packages/repo/` 下对应的 manifest。
+
+## 8. pkg 子命令清单（v0.1）
+
+```
+pkg list                        # 列出已安装包（来自 /bin/*.TNCR + /etc/packages.d）
+pkg info <name>                 # 显示某包详情（版本 / 来源 / sha256 / 大小 / 校验结果）
+pkg verify [name]               # 校验已安装包的 sha256（不给 name 则校验全部）
+pkg install <name>              # 从本地源目录安装（校验 sha256 后写入 /bin）
+pkg remove <name>               # 删除已安装包（/bin 文件 + 登记记录）
+pkg source [set <path>]         # 显示或设置本地源目录（写入 /etc/pkg.conf 的 sourcedir）
+pkg help                        # 显示帮助
+```
+
+> **远程下载（HTTP/HTTPS）尚未实现**：v0.1 的 `pkg` 只能从本地源目录
+> 安装，不支持从 GitHub Raw 等远程地址拉取。第 1 节的官方源 URL 仅为
+> 规划中的目标地址，当前不可用。

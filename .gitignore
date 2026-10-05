@@ -8,6 +8,9 @@ build/
 *.bin
 *.img
 
+# 例外：本地软件源里的产物必须入库，否则 pkg install 无从安装
+!packages/repo/*.tncr
+
 # 运行时生成的磁盘镜像
 tinyos-disk.img
 serial.log

@@ -259,14 +259,16 @@
         '      readdev com1 0x3F8\n\n' +
         'NOTE: this web page is a behavior simulation, not the real kernel.\n';
       var NOTES =
-        'TODO:\n' +
-        ' - wire up the e1000 driver for real LAN tests\n' +
-        ' - finish the multi-disk ATA layer\n' +
-        ' - write more .TNCR demos\n\n' +
-        'DONE:\n' +
-        ' - tinysh user shell (19 commands)\n' +
-        ' - Lua 5.4.7 in user space\n' +
-        ' - VGA text desktop + PS/2 input\n';
+        'TinyOS Genesis v0.1 -- installed by the setup wizard\n' +
+        '\n' +
+        'This file lives on the writable filesystem (TinyFS), so\n' +
+        'anything you write here survives a reboot. The read-only\n' +
+        'image (romfs) holds the programs under /bin.\n' +
+        '\n' +
+        'Try: ls /bin | pwd | cd /home | sysinfo | devlist | ps\n' +
+        '\n' +
+        'Note: on-screen text is English ASCII on purpose -- the VGA\n' +
+        'text mode uses the CP437 glyph table and cannot render CJK.';
       var PASSWD =
         'root:x:0:0:root:/home:/bin/tinysh.TNCR\n' +
         'guest:x:100:100:guest:/home:/bin/tinysh.TNCR\n';

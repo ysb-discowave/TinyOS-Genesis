@@ -1,0 +1,15 @@
+# /etc/pkg.conf -- pkg 命令配置文件（示例）
+#
+# 这是 TinyOS 里 /etc/pkg.conf 的示例内容。pkg 启动时读取本文件，
+# 取 sourcedir 字段作为「本地软件源目录」。若该文件不存在，pkg 使用
+# 默认值 /home/pkgrepo。
+#
+# 用法：
+#   1) 把本仓库 packages/repo/ 的整个内容放到 TinyOS 的某个目录，
+#      例如 /home/pkgrepo
+#   2) 在 TinyOS 里执行：  pkg source set /home/pkgrepo
+#      （这条命令会把下面这行写入 /etc/pkg.conf）
+#   3) 然后即可：  pkg install tinysh
+
+# 本地源目录：install 会到这里读取 <name>.manifest + <name>.tncr
+sourcedir=/home/pkgrepo

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="TinyOS Genesis v0.1 package manager: the package spec / repo skeleton (planning stage), the real romfs-builtin install route, manifest format, official source, the 4 packages that exist today, and the planned pkg command." />
+  <meta name="description" content="TinyOS Genesis v0.1 package manager: the pkg command is now implemented (7 subcommands, SHA256 verification), installing from a local source dir; the still-romfs-builtin route, manifest format, the 4 packages in the repo, and the honest list of what remains unimplemented (remote HTTP/HTTPS download, dependency resolution)." />
   <title>TinyOS Genesis v0.1 · 软件包管理器 / Packages</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -44,18 +44,19 @@
     <!-- PAGE HEAD -->
     <section class="page-head" aria-labelledby="page-title">
       <div class="wrap">
-        <h1 id="page-title" data-zh="软件包管理器：规范已立，命令未到" data-en="Package manager: spec is set, command is not yet">软件包管理器：规范已立，命令未到</h1>
-        <p class="lede" data-zh="v0.1 的包管理器目前只走到「规范 + 仓库骨架」这一步：内核里还没有 pkg 命令。下面把「已实现」与「规划中」分得清清楚楚 —— 包不是用 pkg 装的，而是内置在 romfs 里的。本页如实标注每一条状态。"
-                       data-en="In v0.1 the package manager is only at the “spec + repo skeleton” stage: there is no pkg command in the kernel yet. Below we draw a hard line between “done” and “planned” — packages are not installed via pkg; they are built into romfs. Every status on this page is labelled honestly.">v0.1 的包管理器目前只走到「规范 + 仓库骨架」这一步：内核里还没有 pkg 命令。下面把「已实现」与「规划中」分得清清楚楚 —— 包不是用 pkg 装的，而是内置在 romfs 里的。本页如实标注每一条状态。</p>
+        <h1 id="page-title" data-zh="软件包管理器：pkg 命令已实现" data-en="Package manager: the pkg command is implemented">软件包管理器：pkg 命令已实现</h1>
+        <p class="lede" data-zh="v0.1 的 pkg 命令刚实现完：7 个子命令、带 SHA256 校验，从本地源目录安装。下面把「已实现」与「未实现」分得清清楚楚 —— 远程下载、依赖解析仍属未实现。本页如实标注每一条状态。"
+                       data-en="The pkg command for v0.1 is freshly implemented: 7 subcommands with SHA256 verification, installing from a local source dir. Below we draw a hard line between “done” and “not yet” — remote download and dependency resolution remain unimplemented. Every status on this page is labelled honestly.">v0.1 的 pkg 命令刚实现完：7 个子命令、带 SHA256 校验，从本地源目录安装。下面把「已实现」与「未实现」分得清清楚楚 —— 远程下载、依赖解析仍属未实现。本页如实标注每一条状态。</p>
 
         <nav class="section-toc" aria-label="本页区块导航">
           <a href="#status" data-zh="状态" data-en="Status">状态</a>
-          <a href="#how" data-zh="v0.1 怎么装" data-en="How v0.1 installs">v0.1 怎么装</a>
-          <a href="#spec" data-zh="包结构规范" data-en="Package spec">包结构规范</a>
-          <a href="#source" data-zh="官方源" data-en="Official source">官方源</a>
+          <a href="#quickstart" data-zh="快速上手" data-en="Quick start">快速上手</a>
+          <a href="#reference" data-zh="子命令参考" data-en="Subcommand reference">子命令参考</a>
+          <a href="#sha256" data-zh="SHA256 校验" data-en="SHA256 verification">SHA256 校验</a>
+          <a href="#source-dir" data-zh="本地源目录" data-en="Local source dir">本地源目录</a>
+          <a href="#romfs" data-zh="内置包仍走 romfs" data-en="Builtins still use romfs">内置包仍走 romfs</a>
+          <a href="#boundaries" data-zh="边界与未实现" data-en="Boundaries &amp; unimplemented">边界与未实现</a>
           <a href="#inventory" data-zh="现有包" data-en="Packages today">现有包</a>
-          <a href="#planned" data-zh="规划中的 pkg" data-en="Planned pkg">规划中的 pkg</a>
-          <a href="#todo" data-zh="待补齐" data-en="To-do">待补齐</a>
         </nav>
       </div>
     </section>
@@ -63,29 +64,260 @@
     <!-- 1. STATUS BANNER -->
     <section id="status" class="section" aria-labelledby="status-title">
       <div class="wrap">
-        <h2 id="status-title" data-zh="状态横幅：规划中，请勿当成品用" data-en="Status banner: planned, not a finished product">状态横幅：规划中，请勿当成品用</h2>
+        <h2 id="status-title" data-zh="状态横幅：✅ pkg 已实现（v0.1）" data-en="Status banner: ✅ pkg is implemented (v0.1)">状态横幅：✅ pkg 已实现（v0.1）</h2>
 
-        <div class="callout" role="note" style="border-left-color: var(--warn); background: rgba(255,209,102,.08);">
-          <h3 data-zh="🚧 v0.1 未实现 pkg 命令" data-en="🚧 v0.1 has no pkg command">🚧 v0.1 未实现 pkg 命令</h3>
-          <p data-zh="已确认：在内核源码 src/kernel/shell.c 里 grep &quot;pkg&quot; 没有任何结果。包管理器当前只是「规范文档 + 仓库骨架」阶段，pkg 命令尚未落地。任何「pkg install / pkg list / pkg remove」都属于规划中的预期用法，不是已可用的功能。"
-             data-en="Confirmed: grepping src/kernel/shell.c for &quot;pkg&quot; returns nothing. The package manager is currently only a “spec document + repo skeleton”; the pkg command is not implemented. Anything like pkg install / pkg list / pkg remove is a planned, expected usage — not a working feature.">已确认：在内核源码 src/kernel/shell.c 里 grep "pkg" 没有任何结果。包管理器当前只是「规范文档 + 仓库骨架」阶段，pkg 命令尚未落地。任何「pkg install / pkg list / pkg remove」都属于规划中的预期用法，不是已可用的功能。</p>
+        <div class="callout" role="note" style="border-left-color: var(--good); background: rgba(126,231,135,.08);">
+          <h3 data-zh="✅ v0.1 已实现 pkg 命令" data-en="✅ v0.1 has implemented the pkg command">✅ v0.1 已实现 pkg 命令</h3>
+          <p data-zh="已在 src/kernel/shell.c 中实现（新增约 347 行），编译通过、QEMU 实测可用。提供 7 个子命令：help / list / info / verify / install / remove / source，安装与校验均复用内核的 SHA256。注意：install 走本地源目录，不是网络下载 —— 远程 HTTP/HTTPS 下载仍未实现（见「边界与未实现」）。"
+             data-en="Implemented in src/kernel/shell.c (~347 new lines); compiles and is verified working under QEMU. Provides 7 subcommands: help / list / info / verify / install / remove / source, with install and verify both reusing the kernel's SHA256. Note: install reads a local source dir, not the network — remote HTTP/HTTPS download is still unimplemented (see “Boundaries &amp; unimplemented”).">已在 src/kernel/shell.c 中实现（新增约 347 行），编译通过、QEMU 实测可用。提供 7 个子命令：help / list / info / verify / install / remove / source，安装与校验均复用内核的 SHA256。注意：install 走本地源目录，不是网络下载 —— 远程 HTTP/HTTPS 下载仍未实现（见「边界与未实现」）。</p>
         </div>
 
         <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:16px;">
           <span style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border:1px solid rgba(126,231,135,.4); border-radius:999px; background:rgba(126,231,135,.08); color:var(--good); font-weight:700; font-size:14px;">✅ 已实现 / Done</span>
-          <span style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border:1px solid rgba(255,209,102,.4); border-radius:999px; background:rgba(255,209,102,.08); color:var(--warn); font-weight:700; font-size:14px;">🚧 规划中 / Planned</span>
+          <span style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border:1px solid rgba(255,209,102,.4); border-radius:999px; background:rgba(255,209,102,.08); color:var(--warn); font-weight:700; font-size:14px;">🚧 未实现 / Not yet</span>
         </div>
-        <p class="chart-note" data-zh="本页所有「✅ 已实现」都对应仓库里真实存在的文件或真实可用的构建路线；所有「🚧 规划中」都来自规范文档的预期，尚未写进内核。"
-           data-en="Every “✅ done” on this page maps to a real file in the repo or a real, working build route; every “🚧 planned” comes from the spec's expectations and is not yet in the kernel.">本页所有「✅ 已实现」都对应仓库里真实存在的文件或真实可用的构建路线；所有「🚧 规划中」都来自规范文档的预期，尚未写进内核。</p>
+        <p class="chart-note" data-zh="本页所有「✅ 已实现」都对应内核里真实跑通的命令（QEMU 实测）；所有「🚧 未实现」都如实标注，绝不当成成品。"
+           data-en="Every “✅ done” on this page maps to a command genuinely running in the kernel (verified under QEMU); every “🚧 not yet” is labelled honestly and never passed off as a finished feature.">本页所有「✅ 已实现」都对应内核里真实跑通的命令（QEMU 实测）；所有「🚧 未实现」都如实标注，绝不当成成品。</p>
       </div>
     </section>
 
-    <!-- 2. HOW v0.1 ACTUALLY INSTALLS -->
-    <section id="how" class="section" aria-labelledby="how-title">
+    <!-- 2. QUICK START -->
+    <section id="quickstart" class="section" aria-labelledby="quickstart-title">
       <div class="wrap">
-        <h2 id="how-title" data-zh="v0.1 实际怎么装包：romfs 内置路线 ✅" data-en="How v0.1 actually installs: the romfs-builtin route ✅">v0.1 实际怎么装包：romfs 内置路线 ✅</h2>
-        <p class="section-lead" data-zh="这是 v0.1 真正在用的做法，已经可用。包不是用 pkg 命令装的，而是随镜像一起编译进只读文件系统 romfs：用户程序由宿主机脚本交叉编译成 .TNCR，再打进 romfs，内核启动时挂载，/bin/*.TNCR 直接可执行。"
-                              data-en="This is the real, working v0.1 approach. Packages are not installed via a pkg command; they are compiled into the read-only romfs alongside the image: a host-side script cross-compiles user programs to .TNCR, packs them into romfs, and the kernel mounts romfs at boot so /bin/*.TNCR are directly executable.">这是 v0.1 真正在用的做法，已经可用。包不是用 pkg 命令装的，而是随镜像一起编译进只读文件系统 romfs：用户程序由宿主机脚本交叉编译成 .TNCR，再打进 romfs，内核启动时挂载，/bin/*.TNCR 直接可执行。</p>
+        <h2 id="quickstart-title" data-zh="快速上手：用本地源装一个包（3 步）✅" data-en="Quick start: install a package from a local source (3 steps) ✅">快速上手：用本地源装一个包（3 步）✅</h2>
+        <p class="section-lead" data-zh="pkg 的 install 从本地源目录读取，不联网。下面以把内置的 packages/repo/ 模板作为源为例：把源目录放到 /home/pkgrepo，确认 /etc/pkg.conf 里的 sourcedir，然后 pkg install。"
+                              data-en="pkg install reads from a local source dir and never touches the network. Using the in-repo packages/repo/ template as the source: place the source dir at /home/pkgrepo, confirm sourcedir in /etc/pkg.conf, then pkg install.">pkg 的 install 从本地源目录读取，不联网。下面以把内置的 packages/repo/ 模板作为源为例：把源目录放到 /home/pkgrepo，确认 /etc/pkg.conf 里的 sourcedir，然后 pkg install。</p>
+
+        <ol class="arch" aria-label="本地源安装三步">
+          <li class="arch-node">
+            <span class="arch-tag">1. 放源目录</span>
+            <span class="arch-detail" data-zh="/home/pkgrepo 含 *.tncr + *.manifest" data-en="/home/pkgrepo holds *.tncr + *.manifest">/home/pkgrepo 含 *.tncr + *.manifest</span>
+          </li>
+          <li class="arch-arrow" aria-hidden="true">→</li>
+          <li class="arch-node">
+            <span class="arch-tag">2. 确认配置</span>
+            <span class="arch-detail" data-zh="/etc/pkg.conf: sourcedir" data-en="/etc/pkg.conf: sourcedir">/etc/pkg.conf: sourcedir</span>
+          </li>
+          <li class="arch-arrow" aria-hidden="true">→</li>
+          <li class="arch-node arch-node-userspace">
+            <span class="arch-tag">3. pkg install</span>
+            <span class="arch-detail" data-zh="校验通过 → /bin/&lt;name&gt;.TNCR" data-en="verify pass → /bin/&lt;name&gt;.TNCR">校验通过 → /bin/&lt;name&gt;.TNCR</span>
+          </li>
+        </ol>
+
+        <h3 data-zh="入口命令" data-en="Entry commands">入口命令</h3>
+        <div class="code-block" role="img" aria-label="本地源安装三步命令">
+          <pre aria-label="local install steps"><code># 1) 把 packages/repo/ 放到 TinyOS 的本地源目录（默认 /home/pkgrepo）
+#    该目录需含 &lt;name&gt;.tncr（产物）+ &lt;name&gt;.manifest（描述）
+
+# 2) 确认 /etc/pkg.conf 里的 sourcedir 指向它
+#    pkg.conf.example 内容：  sourcedir /home/pkgrepo
+
+# 3) 安装
+pkg install tinysh</code></pre>
+        </div>
+
+        <div class="callout" role="note">
+          <h3 data-zh="源目录不存在时会明确报错" data-en="A missing source dir is reported clearly">源目录不存在时会明确报错</h3>
+          <p data-zh="若 /home/pkgrepo 还没准备好，pkg install 不会静默失败，而是打印 pkg: source dir missing: /home/pkgrepo，提示你先把源目录放到位。"
+             data-en="If /home/pkgrepo is not ready yet, pkg install does not fail silently — it prints pkg: source dir missing: /home/pkgrepo, telling you to put the source dir in place first.">若 /home/pkgrepo 还没准备好，pkg install 不会静默失败，而是打印 pkg: source dir missing: /home/pkgrepo，提示你先把源目录放到位。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. SUBCOMMAND REFERENCE -->
+    <section id="reference" class="section" aria-labelledby="reference-title">
+      <div class="wrap">
+        <h2 id="reference-title" data-zh="子命令参考表（7 个）✅" data-en="Subcommand reference (7 of them) ✅">子命令参考表（7 个）✅</h2>
+        <p class="section-lead" data-zh="全部 7 个子命令均已在内核实现，下面的说明与例子对应 QEMU 实测行为。"
+                              data-en="All 7 subcommands are implemented in the kernel; the descriptions and examples below match QEMU-verified behaviour.">全部 7 个子命令均已在内核实现，下面的说明与例子对应 QEMU 实测行为。</p>
+
+        <div style="overflow:auto; border:1px solid var(--line); border-radius:var(--radius);">
+          <table style="width:100%; border-collapse:collapse; font-size:14px; min-width:640px;">
+            <caption style="caption-side:top; text-align:left; padding:12px 14px; color:var(--muted); font-size:13px;" data-zh="pkg 子命令清单（命令与字段名均为英文，固定不变）" data-en="pkg subcommand list (commands and field names are English, fixed)">pkg 子命令清单（命令与字段名均为英文，固定不变）</caption>
+            <thead>
+              <tr style="background:rgba(255,255,255,.03); text-align:left;">
+                <th scope="col" style="padding:10px 14px; border-bottom:1px solid var(--line); color:#fff;" data-zh="命令" data-en="Command">命令</th>
+                <th scope="col" style="padding:10px 14px; border-bottom:1px solid var(--line); color:#fff;" data-zh="说明" data-en="Description">说明</th>
+                <th scope="col" style="padding:10px 14px; border-bottom:1px solid var(--line); color:#fff;" data-zh="例子" data-en="Example">例子</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">pkg help</th>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="打印用法说明。" data-en="Print usage information.">打印用法说明。</td>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted); white-space:nowrap;">pkg help</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">pkg list</th>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="列出已安装包：扫描 /bin/*.TNCR 与 /etc/packages.d/ 里的登记记录。" data-en="List installed packages: scan /bin/*.TNCR plus the records in /etc/packages.d/.">列出已安装包：扫描 /bin/*.TNCR 与 /etc/packages.d/ 里的登记记录。</td>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted); white-space:nowrap;">pkg list</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">pkg info &lt;name&gt;</th>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="详情：版本、大小、来源、sha256 及其校验状态。" data-en="Details: version, size, source, sha256 and its verify status.">详情：版本、大小、来源、sha256 及其校验状态。</td>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted); white-space:nowrap;">pkg info tinysh</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">pkg verify [name]</th>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="用 SHA256 校验已安装包，输出 OK / MISMATCH（省略 name 则全部）。" data-en="SHA256-verify installed packages, output OK / MISMATCH (omit name to verify all).">用 SHA256 校验已安装包，输出 OK / MISMATCH（省略 name 则全部）。</td>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted); white-space:nowrap;">pkg verify</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">pkg install &lt;name&gt;</th>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="从本地源目录安装：读 manifest 的 sha256、对源二进制算实际值比对，通过则写入 /bin/&lt;name&gt;.TNCR 并登记到 /etc/packages.d/&lt;name&gt;。" data-en="Install from the local source dir: read manifest sha256, compare against the computed hash of the source binary; on match write /bin/&lt;name&gt;.TNCR and register in /etc/packages.d/&lt;name&gt;.">从本地源目录安装：读 manifest 的 sha256、对源二进制算实际值比对，通过则写入 /bin/&lt;name&gt;.TNCR 并登记到 /etc/packages.d/&lt;name&gt;。</td>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted); white-space:nowrap;">pkg install tinysh</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">pkg remove &lt;name&gt;</th>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="卸载：删文件 + 清记录。" data-en="Uninstall: delete the file and clear the record.">卸载：删文件 + 清记录。</td>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted); white-space:nowrap;">pkg remove tinysh</td>
+              </tr>
+              <tr>
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">pkg source</th>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="显示 / 切换软件源（配置位于 /etc/pkg.conf）。" data-en="Show / switch the package source (config is in /etc/pkg.conf).">显示 / 切换软件源（配置位于 /etc/pkg.conf）。</td>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted); white-space:nowrap;">pkg source</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 data-zh="实测到的真实输出（引用）" data-en="Real outputs from the measurements (quoted)">实测到的真实输出（引用）</h3>
+        <div class="term" role="img" aria-label="pkg 命令实测输出">
+          <div class="term-bar" aria-hidden="true">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="term-title">tinysh — QEMU serial · pkg</span>
+          </div>
+          <pre class="term-body" aria-label="pkg 实测输出">root@tinyos:/root# pkg list
+NAME             VERSION        SIZE
+JVM              ?              5851
+tinysh           ?             46408
+LUA              ?            210584
+CC               ?             162680
+EDIT             ?              45980
+SSHD             ?            114500
+cpp_demo         ?               339
+...
+
+root@tinyos:/root# pkg info tinysh
+package: tinysh
+  version : ?
+  source  : (unregistered: only raw /bin file present)
+  size    : 46408 bytes
+  sha256  : b96e52e09a177363f2e23140e2ea3f508b24e9f683439c1a57b72f6500dd4535
+  verify  : no recorded sha256
+
+root@tinyos:/root# pkg verify
+NAME             RESULT
+tinysh           no sha256 recorded (actual b96e52e0...)
+
+root@tinyos:/root# pkg install nosuchpkg
+pkg: package file not found: /home/pkgrepo/nosuchpkg.[tT]NCR
+
+root@tinyos:/root# pkg remove tinysh
+pkg: removed tinysh</pre>
+        </div>
+
+        <div class="callout" role="note">
+          <h3 data-zh="为什么 VERSION 显示 ?、[tT]NCR 是什么" data-en="Why VERSION shows ? and what [tT]NCR means">为什么 VERSION 显示 ?、[tT]NCR 是什么</h3>
+          <p data-zh="pkg list 里 VERSION 显示 ?，是因为这些包是随镜像内置的、未经 pkg 登记（info 里也写作 unregistered: only raw /bin file present）。报错里的 [tT]NCR 是“兼容大小写扩展名”的写法：源文件既可以是 .tncr 也可以是 .TNCR。这两点都如实说明，不影响功能。"
+             data-en="In pkg list, VERSION shows ? because these packages ship built into the image and were never registered via pkg (info reports unregistered: only raw /bin file present). The [tT]NCR in the error means the extension is matched case-insensitively — the source may be .tncr or .TNCR. Both points are stated honestly and do not affect functionality.">pkg list 里 VERSION 显示 ?，是因为这些包是随镜像内置的、未经 pkg 登记（info 里也写作 unregistered: only raw /bin file present）。报错里的 [tT]NCR 是“兼容大小写扩展名”的写法：源文件既可以是 .tncr 也可以是 .TNCR。这两点都如实说明，不影响功能。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. SHA256 -->
+    <section id="sha256" class="section" aria-labelledby="sha256-title">
+      <div class="wrap">
+        <h2 id="sha256-title" data-zh="SHA256 校验：供应链安全的底座 ✅" data-en="SHA256 verification: the base of supply-chain safety ✅">SHA256 校验：供应链安全的底座 ✅</h2>
+        <p class="section-lead" data-zh="pkg 的 install 与 verify 都做 SHA256 比对，确保装进系统的二进制跟源里登记的一致。这是真实的实现，不是占位。"
+                              data-en="Both pkg install and pkg verify run SHA256 comparisons, making sure what lands in the system matches what the source recorded. This is real, not a placeholder.">pkg 的 install 与 verify 都做 SHA256 比对，确保装进系统的二进制跟源里登记的一致。这是真实的实现，不是占位。</p>
+
+        <h3 data-zh="为什么重要" data-en="Why it matters">为什么重要</h3>
+        <p data-zh="软件包从源到 /bin 之间若被改动（传输截断、源被替换、磁盘损坏），肉眼看不出来。SHA256 在落盘前先算一遍、跟 manifest 登记值比对，从源头拦截“装了个不一样的包”。这是供应链安全的基本盘。"
+           data-en="Between the source and /bin a package could change silently (truncated transfer, swapped source, disk corruption). SHA256 computes the hash before writing and compares it against the recorded manifest value, blocking “I installed a different package” at the source. This is the floor of supply-chain safety.">软件包从源到 /bin 之间若被改动（传输截断、源被替换、磁盘损坏），肉眼看不出来。SHA256 在落盘前先算一遍、跟 manifest 登记值比对，从源头拦截“装了个不一样的包”。这是供应链安全的基本盘。</p>
+
+        <h3 data-zh="它是真怎么工作的" data-en="How it actually works">它是真怎么工作的</h3>
+        <p data-zh="复用内核 src/kernel/sha256.c 里的 sha256_init / sha256_update / sha256_final / sha256_hex。"
+           data-en="It reuses sha256_init / sha256_update / sha256_final / sha256_hex from the kernel's src/kernel/sha256.c.">复用内核 src/kernel/sha256.c 里的 sha256_init / sha256_update / sha256_final / sha256_hex。</p>
+        <ul class="matrix">
+          <li class="card">
+            <h3 data-zh="install 时" data-en="At install">install 时</h3>
+            <p data-zh="读 manifest 的 sha256 字段，对源二进制算实际值比对；不符则报 pkg: sha256 mismatch: &lt;name&gt;，绝不写入。" data-en="Read the manifest's sha256 field, compute the actual hash of the source binary and compare; on mismatch print pkg: sha256 mismatch: &lt;name&gt; and never write.">读 manifest 的 sha256 字段，对源二进制算实际值比对；不符则报 pkg: sha256 mismatch: &lt;name&gt;，绝不写入。</p>
+          </li>
+          <li class="card">
+            <h3 data-zh="verify 时" data-en="At verify">verify 时</h3>
+            <p data-zh="同样比对 /etc/packages.d/&lt;name&gt; 里登记的值，输出 OK 或 MISMATCH。" data-en="Compare against the value recorded in /etc/packages.d/&lt;name&gt;, output OK or MISMATCH.">同样比对 /etc/packages.d/&lt;name&gt; 里登记的值，输出 OK 或 MISMATCH。</p>
+          </li>
+        </ul>
+
+        <h3 data-zh="实测的 tinysh 校验值" data-en="Measured tinysh hash">实测的 tinysh 校验值</h3>
+        <div class="code-block" role="img" aria-label="tinysh 实测 sha256">
+          <pre aria-label="tinysh sha256"><code>sha256: b96e52e09a177363f2e23140e2ea3f508b24e9f683439c1a57b72f6500dd4535
+size  : 46408 bytes   (file: tinysh.TNCR)</code></pre>
+        </div>
+        <p class="chart-note" data-zh="这个值是 QEMU 实测算出的真实哈希，已回填进 packages/tinysh/tinysh.manifest 的 sha256 字段。因此对 tinysh 而言，install 与 verify 都能做真正的完整性校验。"
+           data-en="This is the real hash measured under QEMU and now filled into the sha256 field of packages/tinysh/tinysh.manifest. So for tinysh, both install and verify run genuine integrity checks.">这个值是 QEMU 实测算出的真实哈希，已回填进 packages/tinysh/tinysh.manifest 的 sha256 字段。因此对 tinysh 而言，install 与 verify 都能做真正的完整性校验。</p>
+      </div>
+    </section>
+
+    <!-- 5. LOCAL SOURCE DIR -->
+    <section id="source-dir" class="section" aria-labelledby="source-dir-title">
+      <div class="wrap">
+        <h2 id="source-dir-title" data-zh="本地源目录：结构、配置与模板 ✅" data-en="Local source dir: layout, config and template ✅">本地源目录：结构、配置与模板 ✅</h2>
+        <p class="section-lead" data-zh="install 从一个可配置的本地目录读取，默认 /home/pkgrepo，可在 /etc/pkg.conf 的 sourcedir 里改。源目录里要放：&lt;name&gt;.tncr（产物）+ &lt;name&gt;.manifest（描述）。校验通过后写入 /bin/&lt;name&gt;.TNCR 并登记到 /etc/packages.d/&lt;name&gt;。"
+                              data-en="install reads from a configurable local directory, default /home/pkgrepo, changeable via sourcedir in /etc/pkg.conf. The source dir must hold: &lt;name&gt;.tncr (the artifact) + &lt;name&gt;.manifest (its description). After a passing verify it writes /bin/&lt;name&gt;.TNCR and registers it in /etc/packages.d/&lt;name&gt;.">install 从一个可配置的本地目录读取，默认 /home/pkgrepo，可在 /etc/pkg.conf 的 sourcedir 里改。源目录里要放：&lt;name&gt;.tncr（产物）+ &lt;name&gt;.manifest（描述）。校验通过后写入 /bin/&lt;name&gt;.TNCR 并登记到 /etc/packages.d/&lt;name&gt;。</p>
+
+        <h3 data-zh="源目录结构" data-en="Source dir layout">源目录结构</h3>
+        <div class="code-block" role="img" aria-label="本地源目录结构">
+          <pre aria-label="local source dir layout"><code>&lt;sourcedir&gt;/
+├─ &lt;name&gt;.tncr        # 产物（二进制，扩展名大小写均可）
+└─ &lt;name&gt;.manifest    # 包描述：含 sha256 等字段
+
+# 例：/home/pkgrepo/tinysh.tncr + /home/pkgrepo/tinysh.manifest</code></pre>
+        </div>
+
+        <h3 data-zh="/etc/pkg.conf 配置" data-en="/etc/pkg.conf config">/etc/pkg.conf 配置</h3>
+        <div class="code-block" role="img" aria-label="pkg.conf 示例">
+          <pre aria-label="pkg.conf example"><code># /etc/pkg.conf
+sourcedir /home/pkgrepo</code></pre>
+        </div>
+
+        <h3 data-zh="packages/repo/ 模板已就绪 ✅" data-en="packages/repo/ template is ready ✅">packages/repo/ 模板已就绪 ✅</h3>
+        <p data-zh="仓库里新增了 packages/repo/，是一份可直接当作 sourcedir 使用的完整内容模板："
+           data-en="The repo now ships packages/repo/, a complete template you can use directly as a sourcedir:">仓库里新增了 packages/repo/，是一份可直接当作 sourcedir 使用的完整内容模板：</p>
+        <ul class="matrix">
+          <li class="card">
+            <h3>tinysh.tncr</h3>
+            <p data-zh="真实的 46408 字节产物（与镜像内 /bin/tinysh.TNCR 一致）。" data-en="The real 46408-byte artifact (matches /bin/tinysh.TNCR inside the image).">真实的 46408 字节产物（与镜像内 /bin/tinysh.TNCR 一致）。</p>
+          </li>
+          <li class="card">
+            <h3>tinysh.manifest</h3>
+            <p data-zh="与 packages/tinysh/tinysh.manifest 一致，sha256 已是真实值。" data-en="Matches packages/tinysh/tinysh.manifest, with the real sha256 filled in.">与 packages/tinysh/tinysh.manifest 一致，sha256 已是真实值。</p>
+          </li>
+          <li class="card">
+            <h3>pkg.conf.example</h3>
+            <p data-zh="/etc/pkg.conf 示例（sourcedir /home/pkgrepo）。" data-en="An /etc/pkg.conf example (sourcedir /home/pkgrepo).">/etc/pkg.conf 示例（sourcedir /home/pkgrepo）。</p>
+          </li>
+          <li class="card">
+            <h3>README.md</h3>
+            <p data-zh="用法说明。" data-en="Usage notes.">用法说明。</p>
+          </li>
+        </ul>
+        <div class="callout" role="note">
+          <h3 data-zh="用法" data-en="Usage">用法</h3>
+          <p data-zh="把 packages/repo/ 整个目录放到 TinyOS 的 /home/pkgrepo，然后执行 pkg install tinysh 即可完成一次带 SHA256 校验的本地安装。"
+             data-en="Copy the packages/repo/ directory into TinyOS's /home/pkgrepo, then run pkg install tinysh to complete a SHA256-verified local install.">把 packages/repo/ 整个目录放到 TinyOS 的 /home/pkgrepo，然后执行 pkg install tinysh 即可完成一次带 SHA256 校验的本地安装。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. BUILTIN PACKAGES STILL USE ROMFS -->
+    <section id="romfs" class="section" aria-labelledby="romfs-title">
+      <div class="wrap">
+        <h2 id="romfs-title" data-zh="v0.1 内置包仍走 romfs 路线 ✅" data-en="v0.1 built-in packages still use the romfs route ✅">v0.1 内置包仍走 romfs 路线 ✅</h2>
+        <p class="section-lead" data-zh="pkg 只能装“你放进源目录的包”。系统随镜像自带的那一批（lua、tinysh、sshd、CC、EDIT、JVM 等）其实来自只读文件系统 romfs，与 pkg 无关 —— 它们已经作为 .TNCR 躺在 /bin 下，内核挂载后直接可执行。"
+                              data-en="pkg only installs packages you drop into the source dir. The batch that ships with the image (lua, tinysh, sshd, CC, EDIT, JVM, …) actually comes from the read-only romfs and has nothing to do with pkg — they already sit as .TNCR under /bin and run directly after the kernel mounts them.">pkg 只能装“你放进源目录的包”。系统随镜像自带的那一批（lua、tinysh、sshd、CC、EDIT、JVM 等）其实来自只读文件系统 romfs，与 pkg 无关 —— 它们已经作为 .TNCR 躺在 /bin 下，内核挂载后直接可执行。</p>
 
         <ol class="arch" aria-label="romfs 内置打包流程">
           <li class="arch-node">
@@ -109,138 +341,53 @@
           </li>
         </ol>
 
-        <h3 data-zh="构建入口（宿主机侧）" data-en="Build entry points (host side)">构建入口（宿主机侧）</h3>
-        <div class="code-block" role="img" aria-label="构建用户程序与镜像的命令">
-          <pre aria-label="build commands"><code># 交叉编译用户态 TNCR 程序（tinysh / lua / 网络组件 …）
-python tools/build_users.py
-
-# 把 .TNCR 打进只读 romfs（tools/mkromfs.py 在内部被调用）
-# 内核源码在 src/kernel/；构建入口是 build.ps1
-powershell -ExecutionPolicy Bypass -File build.ps1</code></pre>
-        </div>
-
-        <h3 data-zh="安装向导也能勾选组件 ✅" data-en="The install wizard can also pick components ✅">安装向导也能勾选组件 ✅</h3>
-        <p data-zh="安装器 src/kernel/install.c 的向导第 3 步「Software」可以让用户勾选要写入磁盘的组件（例如 JVM.TNCR 运行时）；向导按勾选决定是否把它写盘。这条路线是真实的、已实现的。"
-           data-en="The installer src/kernel/install.c has a step 3 “Software” in its wizard where the user can tick components to write to disk (e.g. the JVM.TNCR runtime); the wizard decides whether to persist it based on the selection. This route is real and implemented.">安装器 src/kernel/install.c 的向导第 3 步「Software」可以让用户勾选要写入磁盘的组件（例如 JVM.TNCR 运行时）；向导按勾选决定是否把它写盘。这条路线是真实的、已实现的。</p>
-
         <div class="callout" role="note">
           <h3 data-zh="一条命令就能用，靠的是 romfs 不是 pkg" data-en="One command works because of romfs, not pkg">一条命令就能用，靠的是 romfs 不是 pkg</h3>
-          <p data-zh="lua、tinysh、sshd、CC、EDIT 等之所以「装好即用」，是因为它们已经作为 .TNCR 躺在 romfs 的 /bin 下，内核挂载后直接可执行。这与 pkg 命令无关 —— pkg 目前不存在。"
-             data-en="lua, tinysh, sshd, CC, EDIT and friends are “ready to use” because they already sit in /bin as .TNCR inside romfs and the kernel runs them directly after mount. This has nothing to do with pkg — pkg does not exist yet.">lua、tinysh、sshd、CC、EDIT 等之所以「装好即用」，是因为它们已经作为 .TNCR 躺在 romfs 的 /bin 下，内核挂载后直接可执行。这与 pkg 命令无关 —— pkg 目前不存在。</p>
+          <p data-zh="lua、tinysh、sshd、CC、EDIT 等之所以“装好即用”，是因为它们已经作为 .TNCR 在 romfs 的 /bin 下，内核挂载后直接可执行。这与 pkg 命令无关 —— pkg 是用来叠加安装你自己的本地包的。"
+             data-en="lua, tinysh, sshd, CC, EDIT and friends are “ready to use” because they already sit in /bin as .TNCR inside romfs and the kernel runs them directly after mount. This has nothing to do with pkg — pkg is for additionally installing your own local packages.">lua、tinysh、sshd、CC、EDIT 等之所以“装好即用”，是因为它们已经作为 .TNCR 在 romfs 的 /bin 下，内核挂载后直接可执行。这与 pkg 命令无关 —— pkg 是用来叠加安装你自己的本地包的。</p>
         </div>
       </div>
     </section>
 
-    <!-- 3. PACKAGE SPEC -->
-    <section id="spec" class="section" aria-labelledby="spec-title">
+    <!-- 7. BOUNDARIES & UNIMPLEMENTED -->
+    <section id="boundaries" class="section" aria-labelledby="boundaries-title">
       <div class="wrap">
-        <h2 id="spec-title" data-zh="包结构规范（来自 docs/pkg_spec.md）🚧" data-en="Package structure spec (from docs/pkg_spec.md) 🚧">包结构规范（来自 docs/pkg_spec.md）🚧</h2>
-        <p class="section-lead" data-zh="下面是规范文档定义的包布局与 manifest 字段。规范本身已经写清楚，但 pkg 命令与仓库里的大部分包内容尚未落地 —— 所以规范是「已定义」，落地是「规划中」。"
-                              data-en="Below is the package layout and manifest schema defined by the spec document. The spec itself is written out, but the pkg command and most package contents are not yet in place — so the spec is “defined” while the implementation is “planned”.">下面是规范文档定义的包布局与 manifest 字段。规范本身已经写清楚，但 pkg 命令与仓库里的大部分包内容尚未落地 —— 所以规范是「已定义」，落地是「规划中」。</p>
-
-        <h3 data-zh="标准目录布局" data-en="Standard directory layout">标准目录布局</h3>
-        <div class="code-block" role="img" aria-label="标准包目录布局">
-          <pre aria-label="package directory layout"><code>packages/xxx/
-├─ xxx.manifest      # 包描述与构建规则
-└─ src/              # 源码目录</code></pre>
-        </div>
-
-        <h3 data-zh="manifest 字段" data-en="manifest fields">manifest 字段</h3>
-        <div style="overflow:auto; border:1px solid var(--line); border-radius:var(--radius);">
-          <table style="width:100%; border-collapse:collapse; font-size:14px; min-width:560px;">
-            <caption style="caption-side:top; text-align:left; padding:12px 14px; color:var(--muted); font-size:13px;" data-zh="manifest 字段表（字段名与类型为英文，固定不变）" data-en="manifest field table (field names and types are English, fixed)">manifest 字段表（字段名与类型为英文，固定不变）</caption>
-            <thead>
-              <tr style="background:rgba(255,255,255,.03); text-align:left;">
-                <th scope="col" style="padding:10px 14px; border-bottom:1px solid var(--line); color:#fff;" data-zh="字段" data-en="Field">字段</th>
-                <th scope="col" style="padding:10px 14px; border-bottom:1px solid var(--line); color:#fff;" data-zh="类型" data-en="Type">类型</th>
-                <th scope="col" style="padding:10px 14px; border-bottom:1px solid var(--line); color:#fff;" data-zh="说明" data-en="Description">说明</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style="border-bottom:1px solid var(--line);">
-                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">name</th>
-                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">string</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="包名，必须与目录名一致。" data-en="Package name; must match the directory name.">包名，必须与目录名一致。</td>
-              </tr>
-              <tr style="border-bottom:1px solid var(--line);">
-                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">version</th>
-                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">string</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="版本，统一跟随发行版（例如 v0.1）。" data-en="Version; follows the distribution uniformly (e.g. v0.1).">版本，统一跟随发行版（例如 v0.1）。</td>
-              </tr>
-              <tr style="border-bottom:1px solid var(--line);">
-                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">description</th>
-                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">string</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="一句话描述。" data-en="A one-line description.">一句话描述。</td>
-              </tr>
-              <tr style="border-bottom:1px solid var(--line);">
-                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">dependencies</th>
-                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">list</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="依赖包名列表，可为空。" data-en="List of dependency package names; may be empty.">依赖包名列表，可为空。</td>
-              </tr>
-              <tr style="border-bottom:1px solid var(--line);">
-                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">min_compiler</th>
-                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">string</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="最低编译器版本，例如 tncr&gt;=0.1。" data-en="Minimum compiler version, e.g. tncr&gt;=0.1.">最低编译器版本，例如 tncr&gt;=0.1。</td>
-              </tr>
-              <tr style="border-bottom:1px solid var(--line);">
-                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">sha256</th>
-                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">string</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="产出 .tncr 的 SHA256 校验，安装时校验（当前多为占位）。" data-en="SHA256 of the produced .tncr, verified at install (currently mostly a placeholder).">产出 .tncr 的 SHA256 校验，安装时校验（当前多为占位）。</td>
-              </tr>
-              <tr>
-                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">build</th>
-                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">object</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="构建指令：入口 entry、输出 .tncr 路径 output、参数 cmd。" data-en="Build instructions: entry point, output .tncr path, and cmd arguments.">构建指令：入口 entry、输出 .tncr 路径 output、参数 cmd。</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <h3 data-zh="真实示例：packages/tinysh/tinysh.manifest（逐字）✅" data-en="Real example: packages/tinysh/tinysh.manifest (verbatim) ✅">真实示例：packages/tinysh/tinysh.manifest（逐字）✅</h3>
-        <p data-zh="这是仓库里目前唯一内容完整的包，其 manifest 逐字如下。注意 sha256 写的是 __BUILD_FILL__，是一个还没填的占位符（见「待补齐」一节）。"
-           data-en="This is the only fully-populated package in the repo today; its manifest is verbatim below. Note that sha256 is __BUILD_FILL__ — an unfilled placeholder (see the “To-do” section).">这是仓库里目前唯一内容完整的包，其 manifest 逐字如下。注意 sha256 写的是 __BUILD_FILL__，是一个还没填的占位符（见「待补齐」一节）。</p>
-        <div class="code-block" role="img" aria-label="tinysh.manifest 逐字内容">
-          <pre aria-label="tinysh.manifest verbatim"><code>name: tinysh
-version: v0.1
-description: TinyOS Genesis 默认 Shell（/bin/tinysh.tncr）
-dependencies: []
-min_compiler: tncr>=0.1
-sha256: __BUILD_FILL__
-build:
-  entry: src/tinysh.c
-  output: /bin/tinysh.tncr
-  cmd: zig cc -std=c11 -DTINYOS_USER -o tinysh.tncr src/tinysh.c src/kernel_api_tinyos.c</code></pre>
-        </div>
-      </div>
-    </section>
-
-    <!-- 4. OFFICIAL SOURCE -->
-    <section id="source" class="section" aria-labelledby="source-title">
-      <div class="wrap">
-        <h2 id="source-title" data-zh="官方软件源 🚧" data-en="Official package source 🚧">官方软件源 🚧</h2>
-        <p class="section-lead" data-zh="规范文档给出的官方源是一个 GitHub Raw 地址。下面原样列出，并提示一个大小写不一致的细节。"
-                              data-en="The spec gives an official source as a GitHub Raw URL. Listed verbatim below, with a note about a case mismatch.">规范文档给出的官方源是一个 GitHub Raw 地址。下面原样列出，并提示一个大小写不一致的细节。</p>
-
-        <div class="code-block" role="img" aria-label="官方软件源地址">
-          <pre aria-label="official package source URL"><code>https://raw.githubusercontent.com/ysb-discowave/TinyOS-Genesis/main/packages</code></pre>
-        </div>
+        <h2 id="boundaries-title" data-zh="边界与未实现 🚧" data-en="Boundaries &amp; unimplemented 🚧">边界与未实现 🚧</h2>
+        <p class="section-lead" data-zh="诚实区：下面这些在 v0.1 里仍是未实现。不要把它们当成已可用功能。"
+                              data-en="The honest zone: the following are still unimplemented in v0.1. Do not treat them as working features.">诚实区：下面这些在 v0.1 里仍是未实现。不要把它们当成已可用功能。</p>
 
         <div class="callout" role="note" style="border-left-color: var(--warn); background: rgba(255,209,102,.08);">
-          <h3 data-zh="⚠️ 大小写不一致：以实际仓库为准" data-en="⚠️ Case mismatch: trust the real repo">⚠️ 大小写不一致：以实际仓库为准</h3>
-          <p data-zh="规范文档里写的是小写 tinyos-genesis，但实际远端仓库名是 TinyOS-Genesis（首字母大写）。GitHub Raw 的仓库段在多数情况下大小写不敏感，但为稳妥起见，请以实际仓库 TinyOS-Genesis 为准，或直接在浏览器/工具里确认该地址可访问。"
-             data-en="The spec writes the lowercase tinyos-genesis, but the real remote repo is named TinyOS-Genesis (capitalised). GitHub Raw is usually case-insensitive on the repo segment, but to be safe trust the real repo TinyOS-Genesis, or verify the URL is reachable in a browser/tool first.">规范文档里写的是小写 tinyos-genesis，但实际远端仓库名是 TinyOS-Genesis（首字母大写）。GitHub Raw 的仓库段在多数情况下大小写不敏感，但为稳妥起见，请以实际仓库 TinyOS-Genesis 为准，或直接在浏览器/工具里确认该地址可访问。</p>
+          <h3 data-zh="🚧 远程 HTTP/HTTPS 下载未实现" data-en="🚧 Remote HTTP/HTTPS download is not implemented">🚧 远程 HTTP/HTTPS 下载未实现</h3>
+          <p data-zh="内核目前没有 HTTP/HTTPS 客户端，只有 FTP 和 TCP socket；而 v0.1 官方源是 GitHub Raw（https）。因此 install 只能从可配置的本地目录读取，远程下载明确标注为尚未实现。这不是偷懒，是内核能力边界 —— 想联网拉包得先在内核里长出 HTTP 客户端（或走 FTP 改造源）。"
+             data-en="The kernel currently has no HTTP/HTTPS client, only FTP and a TCP socket; and the v0.1 official source is GitHub Raw (https). So install can only read from a configurable local dir, and remote download is explicitly marked not implemented. This is not laziness but a kernel-capability boundary — fetching over the network would first require an HTTP client in the kernel (or reworking the source to FTP).">内核目前没有 HTTP/HTTPS 客户端，只有 FTP 和 TCP socket；而 v0.1 官方源是 GitHub Raw（https）。因此 install 只能从可配置的本地目录读取，远程下载明确标注为尚未实现。这不是偷懒，是内核能力边界 —— 想联网拉包得先在内核里长出 HTTP 客户端（或走 FTP 改造源）。</p>
         </div>
-        <p class="chart-note" data-zh="注意：上面是「规划中」的官方源（pkg 命令要消费它）。v0.1 实际交付的包来自 romfs 内置，不从这个 URL 拉取。"
-           data-en="Note: this is the “planned” official source (what the pkg command would consume). The packages v0.1 actually ships come from the romfs builtin, not fetched from this URL.">注意：上面是「规划中」的官方源（pkg 命令要消费它）。v0.1 实际交付的包来自 romfs 内置，不从这个 URL 拉取。</p>
+
+        <ul class="matrix">
+          <li class="card">
+            <h3 data-zh="🚧 依赖解析未实现" data-en="🚧 Dependency resolution not implemented">🚧 依赖解析未实现</h3>
+            <p data-zh="manifest 里 dependencies 字段已经定义，但 pkg 不会自动拉取或检查依赖。装上 A 时不会自动装它依赖的 B；依赖关系现在只是“被记录”，不被“被执行”。"
+               data-en="The dependencies field is defined in the manifest, but pkg does not auto-fetch or check dependencies yet. Installing A will not auto-install its dependency B; dependencies are “recorded” but not “enforced” for now.">manifest 里 dependencies 字段已经定义，但 pkg 不会自动拉取或检查依赖。装上 A 时不会自动装它依赖的 B；依赖关系现在只是“被记录”，不被“被执行”。</p>
+          </li>
+          <li class="card">
+            <h3 data-zh="🚧 版本显示 ? 的原因" data-en="🚧 Why version shows ?">🚧 版本显示 ? 的原因</h3>
+            <p data-zh="随镜像内置的包未经 pkg 登记，pkg list / pkg info 拿不到版本，于是显示 ?，info 注为 unregistered: only raw /bin file present。这是数据缺失，不是 bug。"
+               data-en="Packages built into the image were never registered via pkg, so pkg list / pkg info have no version to show and print ?; info notes unregistered: only raw /bin file present. This is missing data, not a bug.">随镜像内置的包未经 pkg 登记，pkg list / pkg info 拿不到版本，于是显示 ?，info 注为 unregistered: only raw /bin file present。这是数据缺失，不是 bug。</p>
+          </li>
+          <li class="card card-wide">
+            <h3 data-zh="🚧 三个包仍是空壳" data-en="🚧 Three packages are still empty shells">🚧 三个包仍是空壳</h3>
+            <p data-zh="tncr / web-admin-panel / demos 三个目录没有产物，其 manifest 的 sha256 仍是 __BUILD_FILL__ 占位符。因此它们无法被 pkg 真正校验安装 —— 只有 tinysh 目前拥有真实的 46408 字节产物与真实 sha256。"
+               data-en="The tncr / web-admin-panel / demos directories have no artifact, and their manifest sha256 is still the __BUILD_FILL__ placeholder. So they cannot be genuinely verified or installed by pkg — only tinysh currently has a real 46408-byte artifact and a real sha256.">tncr / web-admin-panel / demos 三个目录没有产物，其 manifest 的 sha256 仍是 __BUILD_FILL__ 占位符。因此它们无法被 pkg 真正校验安装 —— 只有 tinysh 目前拥有真实的 46408 字节产物与真实 sha256。</p>
+          </li>
+        </ul>
       </div>
     </section>
 
-    <!-- 5. PACKAGES TODAY -->
+    <!-- 8. PACKAGES INVENTORY -->
     <section id="inventory" class="section" aria-labelledby="inventory-title">
       <div class="wrap">
-        <h2 id="inventory-title" data-zh="仓库现有包一览（4 个）" data-en="Packages in the repo today (4 of them)">仓库现有包一览（4 个）</h2>
-        <p class="section-lead" data-zh="packages/ 下目前有 4 个目录。只有 tinysh 是内容完整的真实包；其余三个还停留在 manifest + README 的骨架阶段。"
-                              data-en="There are 4 directories under packages/. Only tinysh is a fully-populated, real package; the other three are still at the manifest + README skeleton stage.">packages/ 下目前有 4 个目录。只有 tinysh 是内容完整的真实包；其余三个还停留在 manifest + README 的骨架阶段。</p>
+        <h2 id="inventory-title" data-zh="仓库包一览（4 个 + packages/repo/）" data-en="Packages in the repo (4 of them + packages/repo/)">仓库包一览（4 个 + packages/repo/）</h2>
+        <p class="section-lead" data-zh="packages/ 下目前有 4 个目录。只有 tinysh 是内容完整、带真实产物与真实 sha256 的包；其余三个仍停留在 manifest + README 的骨架阶段。另外新增了可直接当源目录用的 packages/repo/ 模板。"
+                              data-en="There are 4 directories under packages/. Only tinysh is a fully-populated package with a real artifact and a real sha256; the other three are still at the manifest + README skeleton stage. A new packages/repo/ template can be used directly as a source dir.">packages/ 下目前有 4 个目录。只有 tinysh 是内容完整、带真实产物与真实 sha256 的包；其余三个仍停留在 manifest + README 的骨架阶段。另外新增了可直接当源目录用的 packages/repo/ 模板。</p>
 
         <div style="overflow:auto; border:1px solid var(--line); border-radius:var(--radius);">
           <table style="width:100%; border-collapse:collapse; font-size:14px; min-width:520px;">
@@ -255,73 +402,46 @@ build:
             <tbody>
               <tr style="border-bottom:1px solid var(--line);">
                 <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">tinysh/</th>
-                <td style="padding:9px 14px; white-space:nowrap; color:var(--good); font-weight:700;">✅ 真实源码</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="src/ 里有 tinysh.c / tinysh.h / kernel_api.h / kernel_api_tinyos.c / kernel_api_host.c / build_tinysh.py，是唯一内容完整的包。" data-en="src/ holds tinysh.c / tinysh.h / kernel_api.h / kernel_api_tinyos.c / kernel_api_host.c / build_tinysh.py — the only fully-populated package.">src/ 里有 tinysh.c / tinysh.h / kernel_api.h / kernel_api_tinyos.c / kernel_api_host.c / build_tinysh.py，是唯一内容完整的包。</td>
+                <td style="padding:9px 14px; white-space:nowrap; color:var(--good); font-weight:700;">✅ 真实包</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="src/ 完整；tinysh.manifest 的 sha256 已填真实值 b96e52…4535（46408 字节）。" data-en="src/ complete; tinysh.manifest sha256 now holds the real value b96e52…4535 (46408 bytes).">src/ 完整；tinysh.manifest 的 sha256 已填真实值 b96e52…4535（46408 字节）。</td>
               </tr>
               <tr style="border-bottom:1px solid var(--line);">
                 <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">tncr/</th>
                 <td style="padding:9px 14px; white-space:nowrap; color:var(--warn); font-weight:700;">🚧 骨架</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="只有 tncr.manifest + src/README.md（编译器规划中）。" data-en="Only tncr.manifest + src/README.md (compiler is planned).">只有 tncr.manifest + src/README.md（编译器规划中）。</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="只有 tncr.manifest + src/README.md（编译器规划中，sha256 仍是占位）。" data-en="Only tncr.manifest + src/README.md (compiler is planned; sha256 still a placeholder).">只有 tncr.manifest + src/README.md（编译器规划中，sha256 仍是占位）。</td>
               </tr>
               <tr style="border-bottom:1px solid var(--line);">
                 <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">web-admin-panel/</th>
                 <td style="padding:9px 14px; white-space:nowrap; color:var(--warn); font-weight:700;">🚧 骨架</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="只有 manifest + README。" data-en="Only manifest + README.">只有 manifest + README。</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="只有 manifest + README，无产物（sha256 占位）。" data-en="Only manifest + README, no artifact (sha256 placeholder).">只有 manifest + README，无产物（sha256 占位）。</td>
               </tr>
-              <tr>
+              <tr style="border-bottom:1px solid var(--line);">
                 <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">demos/</th>
                 <td style="padding:9px 14px; white-space:nowrap; color:var(--warn); font-weight:700;">🚧 骨架</td>
-                <td style="padding:9px 14px; color:var(--muted);" data-zh="只有 manifest + README。" data-en="Only manifest + README.">只有 manifest + README。</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="只有 manifest + README；demos.manifest 新增 programs 段列出 8 个示例程序（hello 214 / count 877 / basic_demo 204 / cpp_demo 339 / minic_demo 500 / net_demo 467 / gui_demo 470 / tiny_demo 238 字节），但无产物。" data-en="Only manifest + README; demos.manifest added a programs section listing 8 example programs (hello 214 / count 877 / basic_demo 204 / cpp_demo 339 / minic_demo 500 / net_demo 467 / gui_demo 470 / tiny_demo 238 bytes), but no artifact.">只有 manifest + README；demos.manifest 新增 programs 段列出 8 个示例程序（hello 214 / count 877 / basic_demo 204 / cpp_demo 339 / minic_demo 500 / net_demo 467 / gui_demo 470 / tiny_demo 238 字节），但无产物。</td>
+              </tr>
+              <tr>
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">repo/</th>
+                <td style="padding:9px 14px; white-space:nowrap; color:var(--good); font-weight:700;">✅ 源模板</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="可直接当 sourcedir 使用：tinysh.tncr（真实 46408 字节）+ tinysh.manifest + pkg.conf.example + README.md。" data-en="Usable directly as a sourcedir: tinysh.tncr (real 46408 bytes) + tinysh.manifest + pkg.conf.example + README.md.">可直接当 sourcedir 使用：tinysh.tncr（真实 46408 字节）+ tinysh.manifest + pkg.conf.example + README.md。</td>
               </tr>
             </tbody>
           </table>
         </div>
-      </div>
-    </section>
 
-    <!-- 6. PLANNED pkg COMMAND -->
-    <section id="planned" class="section" aria-labelledby="planned-title">
-      <div class="wrap">
-        <h2 id="planned-title" data-zh="规划中的 pkg 命令 🚧" data-en="The planned pkg command 🚧">规划中的 pkg 命令 🚧</h2>
-        <p class="section-lead" data-zh="下面是基于 docs/pkg_spec.md 规范的「预期用法」。每一处都明确标注「规划中，尚未实现」，且给出规范文档路径。这些不是 v0.1 能跑的命令。"
-                              data-en="Below is the “expected usage” derived from docs/pkg_spec.md. Every line is explicitly marked “planned, not implemented” and points to the spec document. These are not commands v0.1 can run.">下面是基于 docs/pkg_spec.md 规范的「预期用法」。每一处都明确标注「规划中，尚未实现」，且给出规范文档路径。这些不是 v0.1 能跑的命令。</p>
-
-        <div class="code-block" role="img" aria-label="规划中的 pkg 命令预期用法">
-          <pre aria-label="planned pkg usage"><code># 🚧 规划中，尚未实现 —— 规范见 docs/pkg_spec.md
-pkg install &lt;name&gt;     # 从官方源安装一个包（规划中）
-pkg list               # 列出已安装 / 可用包（规划中）
-pkg remove &lt;name&gt;      # 卸载一个包（规划中）</code></pre>
+        <h3 data-zh="真实示例：packages/tinysh/tinysh.manifest（逐字，sha256 已填真）✅" data-en="Real example: packages/tinysh/tinysh.manifest (verbatim, sha256 now real) ✅">真实示例：packages/tinysh/tinysh.manifest（逐字，sha256 已填真）✅</h3>
+        <div class="code-block" role="img" aria-label="tinysh.manifest 逐字内容">
+          <pre aria-label="tinysh.manifest verbatim"><code>name: tinysh
+version: v0.1
+description: TinyOS Genesis 默认 Shell（/bin/tinysh.tncr）
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: b96e52e09a177363f2e23140e2ea3f508b24e9f683439c1a57b72f6500dd4535
+build:
+  entry: src/tinysh.c
+  output: /bin/tinysh.tncr
+  cmd: zig cc -std=c11 -DTINYOS_USER -o tinysh.tncr src/tinysh.c src/kernel_api_tinyos.c</code></pre>
         </div>
-
-        <div class="callout" role="note" style="border-left-color: var(--warn); background: rgba(255,209,102,.08);">
-          <h3 data-zh="🚧 不要把它当成可用功能" data-en="🚧 Do not treat this as a feature">🚧 不要把它当成可用功能</h3>
-          <p data-zh="pkg 命令目前不存在于内核（已 grep 确认）。上面只是规范文档描述的预期形态，用于对齐设计目标。真正实现前，请使用「v0.1 怎么装包」一节里的 romfs 内置路线。规范全文：docs/pkg_spec.md。"
-             data-en="The pkg command does not exist in the kernel yet (grep-confirmed). The above is only the expected shape described by the spec, to align design goals. Until it is real, use the romfs-builtin route in “How v0.1 installs”. Full spec: docs/pkg_spec.md.">pkg 命令目前不存在于内核（已 grep 确认）。上面只是规范文档描述的预期形态，用于对齐设计目标。真正实现前，请使用「v0.1 怎么装包」一节里的 romfs 内置路线。规范全文：docs/pkg_spec.md。</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- 7. TO-DO -->
-    <section id="todo" class="section" aria-labelledby="todo-title">
-      <div class="wrap">
-        <h2 id="todo-title" data-zh="待补齐项 🚧" data-en="To-do items 🚧">待补齐项 🚧</h2>
-        <p class="section-lead" data-zh="把当前明确的缺口列出来，避免被误读成「已经做完」。"
-                              data-en="List the clear gaps so they are not misread as “already done”.">把当前明确的缺口列出来，避免被误读成「已经做完」。</p>
-
-        <ul class="matrix">
-          <li class="card">
-            <h3 data-zh="sha256 占位未填 🚧" data-en="sha256 placeholder unfilled 🚧">sha256 占位未填 🚧</h3>
-            <p data-zh="tinysh.manifest 里 sha256: __BUILD_FILL__ 是占位符，安装期校验还没法真正做。需要构建流程在产出 .tncr 后回填真实哈希。" data-en="In tinysh.manifest, sha256: __BUILD_FILL__ is a placeholder; install-time verification cannot really run yet. The build flow must fill in the real hash after producing the .tncr.">tinysh.manifest 里 sha256: __BUILD_FILL__ 是占位符，安装期校验还没法真正做。需要构建流程在产出 .tncr 后回填真实哈希。</p>
-          </li>
-          <li class="card">
-            <h3 data-zh="tncr / web-admin-panel / demos 尚空 🚧" data-en="tncr / web-admin-panel / demos still empty 🚧">tncr / web-admin-panel / demos 尚空 🚧</h3>
-            <p data-zh="这三个目录只有 manifest + README，没有真实源码或产出。tncr 目录尤其关键：它本应是编译器包，目前只有规划。" data-en="These three directories have only manifest + README, no real source or output. The tncr directory is especially critical: it is meant to be the compiler package and currently only has a plan.">这三个目录只有 manifest + README，没有真实源码或产出。tncr 目录尤其关键：它本应是编译器包，目前只有规划。</p>
-          </li>
-          <li class="card">
-            <h3 data-zh="pkg 命令未实现 🚧" data-en="pkg command not implemented 🚧">pkg 命令未实现 🚧</h3>
-            <p data-zh="内核 shell 里没有 pkg。装上「从官方源拉取 / 校验 / 卸载」的完整闭环，需要先把上面的占位与骨架补齐。" data-en="There is no pkg in the kernel shell. The full loop of “fetch from source / verify / uninstall” needs the placeholders and skeletons above filled first.">内核 shell 里没有 pkg。装上「从官方源拉取 / 校验 / 卸载」的完整闭环，需要先把上面的占位与骨架补齐。</p>
-          </li>
-        </ul>
       </div>
     </section>
   </main>

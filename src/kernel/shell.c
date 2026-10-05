@@ -21,6 +21,7 @@
 #include "net/ftp.h"
 #include "net/smb.h"
 #include "libc.h"
+#include "sha256.h"
 
 static char g_cwd[256] = "/home";
 
@@ -303,6 +304,349 @@ static void cmd_net(const char *arg) {
     } else kprintf("unknown protocol: %s\n", proto);
 }
 
+/* ==================================================================
+ * pkg —— 软件包管理（Genesis v0.1，仅本地源目录）
+ * ----------------------------------------------------------------
+ * 约束对照：只改本文件；安装必做 sha256 校验（接 kernel/sha256.c）；
+ * 内核没有 HTTP 客户端，所以 install 从可配置的本地源目录读取
+ * <name>.tncr + <name>.manifest，校验后写入 /bin/<name>.TNCR 并登记到
+ * /etc/packages.d/<name>。远程 HTTPS 源尚未实现（help 里如实写明）。
+ * 不引入动态分配：全部栈上缓冲，文件内容用 VFS 读。
+ * ================================================================== */
+#define PKG_BIN_DIR  "/bin"
+#define PKG_DB_DIR   "/etc/packages.d"
+#define PKG_CONF     "/etc/pkg.conf"
+#define PKG_DEF_SRC  "/home/pkgrepo"
+
+/* 从 key=value 文本里取出 key 对应的值（容忍前导空白；不做转义） */
+static int pkg_get_kv(const char *buf, u32 sz, const char *key, char *out, int n) {
+    out[0] = 0;
+    int klen = (int)strlen(key);
+    const char *p = buf;
+    const char *end = buf + sz;
+    while (p < end) {
+        const char *line = p;
+        while (p < end && *p != '\n' && *p != '\r' && *p != 0) p++;
+        int ll = (int)(p - line);
+        const char *s = line;
+        while (s < line + ll && (*s == ' ' || *s == '\t')) s++;
+        int avail = (int)(line + ll - s);
+        if (avail > klen && strncmp(s, key, klen) == 0 && s[klen] == '=') {
+            const char *v = s + klen + 1;
+            while (v < line + ll && (*v == ' ' || *v == '\t')) v++;
+            const char *ve = line + ll;
+            while (ve > v && (ve[-1] == ' ' || ve[-1] == '\t')) ve--;
+            int vl = (int)(ve - v);
+            if (vl >= n) vl = n - 1;
+            memcpy(out, v, vl); out[vl] = 0;
+            return 0;
+        }
+        while (p < end && (*p == '\n' || *p == '\r' || *p == 0)) p++;
+    }
+    return -1;
+}
+
+/* 读 /etc/pkg.conf，取 sourcedir（缺省 /home/pkgrepo） */
+static void pkg_read_conf(char *sd, int n) {
+    snprintf(sd, n, "%s", PKG_DEF_SRC);
+    u32 sz = 0;
+    const u8 *d = vfs_read_file(PKG_CONF, &sz);
+    if (!d) return;
+    pkg_get_kv((const char *)d, sz, "sourcedir", sd, n);
+}
+
+/* 校验单个已安装包的 sha256：算实际值，和记录里的比对 */
+static void pkg_verify_one(const char *name) {
+    char binp[256];
+    snprintf(binp, sizeof(binp), "%s/%s.TNCR", PKG_BIN_DIR, name);
+    vfs_node_t *bin = vfs_resolve(binp);
+    if (!bin) { kprintf("pkg: package not found: %s\n", name); return; }
+    char act[65];
+    sha256_hex(bin->data, bin->size, act);
+    char recp[256];
+    snprintf(recp, sizeof(recp), "%s/%s", PKG_DB_DIR, name);
+    u32 rsz = 0;
+    const u8 *rd = vfs_read_file(recp, &rsz);
+    char exp[65]; exp[0] = 0;
+    if (rd) pkg_get_kv((const char *)rd, rsz, "sha256", exp, sizeof(exp));
+    if (!exp[0])
+        kprintf("%-16s no sha256 recorded (actual %s)\n", name, act);
+    else if (strcasecmp(act, exp) == 0)
+        kprintf("%-16s OK\n", name);
+    else
+        kprintf("%-16s MISMATCH (expected %s)\n", name, exp);
+}
+
+struct pkg_va { int cnt; };
+
+static void pkg_list_cb(const char *name, vfs_type t, void *arg) {
+    struct pkg_va *a = (struct pkg_va *)arg;
+    int nl = (int)strlen(name);
+    if (t != VFS_FILE || nl < 5) return;
+    if (strcasecmp(name + nl - 5, ".TNCR") != 0) return;
+    char pkg[64];
+    int k = 0;
+    for (int i = 0; i < nl - 5 && k < 63; i++) pkg[k++] = name[i];
+    pkg[k] = 0;
+    a->cnt++;
+    char recp[256];
+    snprintf(recp, sizeof(recp), "%s/%s", PKG_DB_DIR, pkg);
+    char ver[32]; strcpy(ver, "?");
+    u32 rsz = 0;
+    const u8 *rd = vfs_read_file(recp, &rsz);
+    if (rd) pkg_get_kv((const char *)rd, rsz, "version", ver, sizeof(ver));
+    char binp[256];
+    snprintf(binp, sizeof(binp), "%s/%s.TNCR", PKG_BIN_DIR, pkg);
+    vfs_node_t *nd = vfs_resolve(binp);
+    u32 sz = (nd && nd->type == VFS_FILE) ? nd->size : 0;
+    kprintf("%-16s %-8s %10u\n", pkg, ver, sz);
+}
+
+static void pkg_verify_cb(const char *name, vfs_type t, void *arg) {
+    struct pkg_va *a = (struct pkg_va *)arg;
+    int nl = (int)strlen(name);
+    if (t != VFS_FILE || nl < 5) return;
+    if (strcasecmp(name + nl - 5, ".TNCR") != 0) return;
+    char pkg[64];
+    int k = 0;
+    for (int i = 0; i < nl - 5 && k < 63; i++) pkg[k++] = name[i];
+    pkg[k] = 0;
+    a->cnt++;
+    pkg_verify_one(pkg);
+}
+
+static void cmd_pkg(const char *arg) {
+    /* 取子命令（第一个词）与剩余参数 */
+    char sub[32]; int i = 0;
+    const char *p = arg;
+    while (*p == ' ' || *p == '\t') p++;
+    while (*p && *p != ' ' && *p != '\t' && i < 31) sub[i++] = *p++;
+    sub[i] = 0;
+    while (*p == ' ' || *p == '\t') p++;
+    const char *rest = p;
+
+    if (sub[0] == 0 || strcmp(sub, "help") == 0) {
+        kprintf("pkg: package manager (v0.1, LOCAL SOURCE ONLY)\n");
+        kprintf("usage:\n");
+        kprintf("  pkg list                        list installed packages\n");
+        kprintf("  pkg info <name>                 show details of a package\n");
+        kprintf("  pkg verify [name]               verify sha256 of package(s)\n");
+        kprintf("  pkg install <name>              install from local source dir\n");
+        kprintf("  pkg remove <name>               remove an installed package\n");
+        kprintf("  pkg source [set <path>]         show / set the local source dir\n");
+        kprintf("  pkg help                        this message\n");
+        kprintf("notes:\n");
+        kprintf("  install reads <name>.manifest + <name>.tncr from the source dir,\n");
+        kprintf("  checks sha256, then writes /bin/<name>.TNCR and registers it.\n");
+        kprintf("  remote HTTP/HTTPS download is NOT implemented yet (local dir only).\n");
+        return;
+    }
+
+    if (strcmp(sub, "list") == 0) {
+        kprintf("%-16s %-8s %10s\n", "NAME", "VERSION", "SIZE");
+        struct pkg_va a; a.cnt = 0;
+        vfs_list(PKG_BIN_DIR, pkg_list_cb, &a);
+        if (!a.cnt) kprintf("(no packages installed)\n");
+        return;
+    }
+
+    if (strcmp(sub, "verify") == 0) {
+        char name[64]; int j = 0;
+        const char *q = rest;
+        while (*q == ' ' || *q == '\t') q++;
+        while (*q && *q != ' ' && *q != '\t' && j < 63) name[j++] = *q++;
+        name[j] = 0;
+        if (name[0]) {
+            pkg_verify_one(name);
+        } else {
+            kprintf("%-16s %s\n", "NAME", "RESULT");
+            struct pkg_va a; a.cnt = 0;
+            vfs_list(PKG_BIN_DIR, pkg_verify_cb, &a);
+            if (!a.cnt) kprintf("(no packages to verify)\n");
+        }
+        return;
+    }
+
+    if (strcmp(sub, "info") == 0) {
+        char name[64]; int j = 0;
+        const char *q = rest;
+        while (*q == ' ' || *q == '\t') q++;
+        while (*q && *q != ' ' && *q != '\t' && j < 63) name[j++] = *q++;
+        name[j] = 0;
+        if (!name[0]) { kprintf("usage: pkg info <name>\n"); return; }
+        char binp[256], recp[256];
+        snprintf(binp, sizeof(binp), "%s/%s.TNCR", PKG_BIN_DIR, name);
+        snprintf(recp, sizeof(recp), "%s/%s", PKG_DB_DIR, name);
+        vfs_node_t *bin = vfs_resolve(binp);
+        vfs_node_t *rec = vfs_resolve(recp);
+        if (!bin && !rec) { kprintf("pkg: package not found: %s\n", name); return; }
+        kprintf("package: %s\n", name);
+        if (rec) {
+            u32 rsz = 0;
+            const u8 *rd = vfs_read_file(recp, &rsz);
+            char v[32], src[128], sh[65], desc[128];
+            v[0] = src[0] = sh[0] = desc[0] = 0;
+            if (rd) {
+                pkg_get_kv((const char *)rd, rsz, "version", v, sizeof(v));
+                pkg_get_kv((const char *)rd, rsz, "source", src, sizeof(src));
+                pkg_get_kv((const char *)rd, rsz, "sha256", sh, sizeof(sh));
+                pkg_get_kv((const char *)rd, rsz, "desc", desc, sizeof(desc));
+            }
+            kprintf("  version : %s\n", v[0] ? v : "?");
+            kprintf("  source  : %s\n", src[0] ? src : "(unregistered)");
+            kprintf("  sha256  : %s\n", sh[0] ? sh : "(none)");
+            if (desc[0]) kprintf("  desc    : %s\n", desc);
+        } else {
+            kprintf("  version : ?\n");
+            kprintf("  source  : (unregistered: only raw /bin file present)\n");
+        }
+        if (bin) {
+            kprintf("  size    : %u bytes\n", bin->size);
+            char act[65];
+            sha256_hex(bin->data, bin->size, act);
+            kprintf("  sha256  : %s\n", act);
+            u32 rsz = 0;
+            const u8 *rd = vfs_read_file(recp, &rsz);
+            char exp[65]; exp[0] = 0;
+            if (rd) pkg_get_kv((const char *)rd, rsz, "sha256", exp, sizeof(exp));
+            if (exp[0]) kprintf("  verify  : %s\n", strcasecmp(act, exp) == 0 ? "OK" : "MISMATCH");
+            else        kprintf("  verify  : no recorded sha256\n");
+        } else {
+            kprintf("  note    : binary %s.TNCR is missing; only metadata present\n", binp);
+        }
+        return;
+    }
+
+    if (strcmp(sub, "remove") == 0) {
+        char name[64]; int j = 0;
+        const char *q = rest;
+        while (*q == ' ' || *q == '\t') q++;
+        while (*q && *q != ' ' && *q != '\t' && j < 63) name[j++] = *q++;
+        name[j] = 0;
+        if (!name[0]) { kprintf("usage: pkg remove <name>\n"); return; }
+        char binp[256], recp[256];
+        snprintf(binp, sizeof(binp), "%s/%s.TNCR", PKG_BIN_DIR, name);
+        snprintf(recp, sizeof(recp), "%s/%s", PKG_DB_DIR, name);
+        if (!vfs_resolve(binp) && !vfs_resolve(recp)) {
+            kprintf("pkg: package not found: %s\n", name);
+            return;
+        }
+        int did = 0;
+        if (vfs_resolve(binp)) {
+            if (vfs_delete(binp) == 0) did = 1;
+            else kprintf("pkg: failed to delete %s\n", binp);
+        }
+        if (vfs_resolve(recp)) {
+            if (vfs_delete(recp) == 0) did = 1;
+            else kprintf("pkg: failed to delete record %s\n", recp);
+        }
+        kprintf(did ? "pkg: removed %s\n" : "pkg: nothing removed\n", name);
+        return;
+    }
+
+    if (strcmp(sub, "source") == 0) {
+        /* pkg source set <path> */
+        const char *r = rest;
+        while (*r == ' ' || *r == '\t') r++;
+        if (!strncmp(r, "set", 3) && (r[3] == ' ' || r[3] == '\t' || r[3] == 0)) {
+            const char *q = r + 3;
+            while (*q == ' ' || *q == '\t') q++;
+            char path[256]; int j = 0;
+            while (*q && *q != ' ' && *q != '\t' && j < 255) path[j++] = *q++;
+            path[j] = 0;
+            if (!path[0]) { kprintf("usage: pkg source set <path>\n"); return; }
+            if (!need_write(PKG_CONF)) return;
+            char conf[300];
+            snprintf(conf, sizeof(conf), "sourcedir=%s\n", path);
+            if (vfs_write_file(PKG_CONF, (const u8 *)conf, (u32)strlen(conf)) == 0)
+                kprintf("pkg: source set to %s\n", path);
+            else
+                kprintf("pkg: failed to write %s\n", PKG_CONF);
+            return;
+        }
+        char sd[256];
+        pkg_read_conf(sd, sizeof(sd));
+        kprintf("pkg: source dir: %s\n", sd);
+        kprintf("pkg: remote HTTP/HTTPS sources are NOT implemented yet (local dir only)\n");
+        return;
+    }
+
+    if (strcmp(sub, "install") == 0) {
+        char name[64]; int j = 0;
+        const char *q = rest;
+        while (*q == ' ' || *q == '\t') q++;
+        while (*q && *q != ' ' && *q != '\t' && j < 63) name[j++] = *q++;
+        name[j] = 0;
+        if (!name[0]) {
+            kprintf("usage: pkg install <name>\n");
+            kprintf("  (installs from the local source dir; remote download not yet implemented)\n");
+            return;
+        }
+        char sd[256];
+        pkg_read_conf(sd, sizeof(sd));
+        vfs_node_t *sdnode = vfs_resolve(sd);
+        if (!sdnode || sdnode->type != VFS_DIR) {
+            kprintf("pkg: source dir missing: %s\n", sd);
+            return;
+        }
+        /* 清单 */
+        char mpath[512];
+        snprintf(mpath, sizeof(mpath), "%s/%s.manifest", sd, name);
+        u32 msz = 0;
+        const u8 *md = vfs_read_file(mpath, &msz);
+        if (!md) { kprintf("pkg: manifest not found: %s\n", mpath); return; }
+        /* 二进制：优先小写 .tncr，回退大写 .TNCR */
+        char bpath[512];
+        u32 bsz = 0;
+        const u8 *bd = NULL;
+        snprintf(bpath, sizeof(bpath), "%s/%s.tncr", sd, name);
+        bd = vfs_read_file(bpath, &bsz);
+        if (!bd) {
+            snprintf(bpath, sizeof(bpath), "%s/%s.TNCR", sd, name);
+            bd = vfs_read_file(bpath, &bsz);
+        }
+        if (!bd) {
+            kprintf("pkg: package file not found: %s/%s.[tT]NCR\n", sd, name);
+            return;
+        }
+        /* sha256 校验 */
+        char exp[65]; exp[0] = 0;
+        pkg_get_kv((const char *)md, msz, "sha256", exp, sizeof(exp));
+        if (exp[0]) {
+            char act[65];
+            sha256_hex(bd, bsz, act);
+            if (strcasecmp(act, exp) != 0) {
+                kprintf("pkg: sha256 mismatch: %s\n", name);
+                kprintf("  expected %s\n  actual   %s\n", exp, act);
+                return;
+            }
+        } else {
+            kprintf("pkg: warning: no sha256 in manifest, skipping verification\n");
+        }
+        /* 写 /bin/<name>.TNCR（需要写权限） */
+        char binp[256];
+        snprintf(binp, sizeof(binp), "%s/%s.TNCR", PKG_BIN_DIR, name);
+        if (!need_write(binp)) return;
+        if (vfs_write_file(binp, bd, bsz) != 0) {
+            kprintf("pkg: failed to write %s\n", binp);
+            return;
+        }
+        /* 登记到 /etc/packages.d/<name> */
+        char recp[256];
+        snprintf(recp, sizeof(recp), "%s/%s", PKG_DB_DIR, name);
+        if (!vfs_resolve(PKG_DB_DIR)) vfs_mkdir(PKG_DB_DIR);
+        if (vfs_write_file(recp, md, msz) != 0)
+            kprintf("pkg: warning: installed but failed to write record %s\n", recp);
+        char ver[32]; ver[0] = 0;
+        pkg_get_kv((const char *)md, msz, "version", ver, sizeof(ver));
+        kprintf("pkg: installed %s (version %s, %u bytes) -> %s\n",
+                name, ver[0] ? ver : "?", bsz, binp);
+        return;
+    }
+
+    kprintf("pkg: unknown subcommand: %s (try 'pkg help')\n", sub);
+}
+
 /* ---- 磁盘 / 持久化文件系统 ---- */
 static void cmd_fs(const char *arg) {
     char tok[32];
@@ -411,6 +755,7 @@ int shell_exec(const char *cmd, int session_id) {
         kprintf("  part [disk]                     show the MBR partition table (of a disk)\n");
         kprintf("  disk [default <name>]           list all disks / pick the default disk\n");
         kprintf("  net <...>                       network (FTP/SMB/put/get/ping)\n");
+        kprintf("  pkg <...>                       package manager (list/info/verify/install/remove/source)\n");
         kprintf("  sshd                            start the SSH server (port from /etc/sshd.conf)\n");
         kprintf("  tinysh                          start the Genesis user shell (type `exit` to return)\n");
         kprintf("  ps uname mem uptime date mouse  system information\n");
@@ -529,6 +874,8 @@ int shell_exec(const char *cmd, int session_id) {
         }
     } else if (strcmp(cmd0, "net") == 0) {
         cmd_net(arg);
+    } else if (strcmp(cmd0, "pkg") == 0) {
+        cmd_pkg(arg);
     } else if (strcmp(cmd0, "whoami") == 0) {
         int uid = user_current();
         kprintf("%s\n", uid < 0 ? "nobody" : user_name_of(uid));

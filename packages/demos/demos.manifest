@@ -1,10 +1,56 @@
 name: demos
 version: v0.1
-description: TinyOS Genesis 演示脚本集合（.tsh / .tncr）
+description: TinyOS Genesis 演示程序集合（8 个真实 .tncr 示例）
 dependencies: []
 min_compiler: tncr>=0.1
+# 本包是「演示程序索引 / 说明包」，没有单一的可安装产物：
+# 下面列出的 .tncr 由 tools/build_users.py 编译、打包进内核 romfs 的 /bin，
+# 而不是由本包在目标机上编译。因此没有可供 pkg install 落盘的 .tncr，
+# sha256 暂无可校验对象，保持 __BUILD_FILL__。
 sha256: __BUILD_FILL__
+# 演示程序清单（均为 /bin 下已存在的真实 .tncr，括号内为字节大小）：
+programs:
+  - name: hello.TNCR
+    size: 214
+    lang: c
+    entry: examples/hello.c
+    demo: 最小化 C 程序，验证 C 工具链与 TNCR 运行时能正常加载运行
+  - name: count.TNCR
+    size: 877
+    lang: c
+    entry: examples/count.c
+    demo: 循环与计数器，演示 C 程序的基本控制流与终端输出
+  - name: basic_demo.TNCR
+    size: 204
+    lang: basic
+    entry: examples/loop.bas
+    demo: 由 TinyBASIC 解释器运行的 BASIC 循环示例
+  - name: cpp_demo.TNCR
+    size: 339
+    lang: cpp
+    entry: examples/hello.cpp
+    demo: 最小化 C++ 程序，验证 C++ 工具链可用性
+  - name: minic_demo.TNCR
+    size: 500
+    lang: minic
+    entry: examples/calc.minic
+    demo: MiniC 编译器示例（calc），演示 MiniC 源到 .tncr 的编译
+  - name: net_demo.TNCR
+    size: 467
+    lang: c
+    entry: examples/net_demo.c
+    demo: 网络栈演示，使用 TinyOS 的 ARP/IPv4/TCP 能力
+  - name: gui_demo.TNCR
+    size: 470
+    lang: c
+    entry: examples/gui_demo.c
+    demo: 桌面 / GUI 演示（--gui），展示窗口与图形输出
+  - name: tiny_demo.TNCR
+    size: 238
+    lang: tiny
+    entry: examples/hello.tiny
+    demo: TinyLang 源程序示例，验证 TinyLang 工具链
 build:
   entry: src/
   output: /demo/
-  cmd: '# 纯脚本包，无需编译'
+  cmd: '# 演示程序由 tools/build_users.py 编译进 romfs，本包仅作索引/说明'

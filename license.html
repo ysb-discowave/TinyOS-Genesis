@@ -49,15 +49,95 @@
 
     <section class="section">
       <div class="wrap">
-        <div class="placeholder" role="status">
-          <svg class="placeholder-icon" width="44" height="44" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-            <circle cx="24" cy="24" r="18"/>
-            <path d="M24 14v10l7 4"/>
-          </svg>
-          <h2 data-zh="内容编写中" data-en="Content in progress">内容编写中</h2>
-          <p data-zh="本页内容由负责协议模块的同事补充（MIT 全文、版权与署名说明、第三方组件许可等）。导航、页脚与语言切换已就绪，刷新后语言保持。"
-             data-en="This page's content is being filled in by the license module owner (full MIT text, copyright and attribution notes, third-party component licenses). Navigation, footer and language toggle are already in place; the chosen language persists across reloads.">本页内容由负责协议模块的同事补充（MIT 全文、版权与署名说明、第三方组件许可等）。导航、页脚与语言切换已就绪，刷新后语言保持。</p>
+        <h2 data-zh="为什么是 MIT" data-en="Why MIT">为什么是 MIT</h2>
+        <div class="grid grid-3">
+          <div class="card">
+            <h3 data-zh="允许任何用途" data-en="Any purpose">允许任何用途</h3>
+            <p data-zh="可以商用、私用、改作、再分发，甚至闭源集成，只要保留版权声明。" data-en="Use it commercially or privately, modify it, redistribute it, even ship it inside a closed-source product — as long as the copyright notice stays.">可以商用、私用、改作、再分发，甚至闭源集成，只要保留版权声明。</p>
+          </div>
+          <div class="card">
+            <h3 data-zh="唯一的义务" data-en="One obligation">唯一的义务</h3>
+            <p data-zh="在所有副本或实质性部分中保留版权声明与许可声明。本仓库根目录的 <code>LICENSE</code> 即为该声明。" data-en="Keep the copyright and permission notices in all copies or substantial portions. The <code>LICENSE</code> file at the repository root is exactly that notice.">在所有副本或实质性部分中保留版权声明与许可声明。本仓库根目录的 <code>LICENSE</code> 即为该声明。</p>
+          </div>
+          <div class="card">
+            <h3 data-zh="无担保" data-en="No warranty">无担保</h3>
+            <p data-zh="软件按「原样」提供，不附带任何明示或默示担保。作者不对使用后果承担责任。" data-en="The software is provided &quot;as is&quot;, without warranty of any kind. The authors are not liable for what you do with it.">软件按「原样」提供，不附带任何明示或默示担保。作者不对使用后果承担责任。</p>
+          </div>
         </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <h2 data-zh="第三方组件" data-en="Third-party components">第三方组件</h2>
+        <p class="lede" data-zh="本项目自身代码采用 MIT，但仓库里包含一个独立的第三方组件，它沿用自己的许可证。" data-en="The project's own code is MIT, but the repository vendors one independent third-party component that carries its own license.">本项目自身代码采用 MIT，但仓库里包含一个独立的第三方组件，它沿用自己的许可证。</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col" data-zh="组件" data-en="Component">组件</th>
+                <th scope="col" data-zh="版本" data-en="Version">版本</th>
+                <th scope="col" data-zh="位置" data-en="Location">位置</th>
+                <th scope="col" data-zh="许可证" data-en="License">许可证</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Lua</strong></td>
+                <td>5.4.7</td>
+                <td><code>thirdparty/lua/</code></td>
+                <td data-zh="MIT License（Lua 官方即以 MIT 发布）" data-en="MIT License (Lua ships under MIT)">MIT License（Lua 官方即以 MIT 发布）</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note" data-zh="Lua 的 MIT 许可证全文随其源码保留在 <code>thirdparty/lua/</code> 内。合并到 TinyOS 的改动仅限于：裸机 libc shim、freestanding 编译配置与 VFS 文件桥，未改动 Lua 语言本体。" data-en="Lua's own MIT license text ships with its sources under <code>thirdparty/lua/</code>. The TinyOS-side changes are limited to the freestanding libc shim, build configuration and the VFS file bridge; the Lua language itself is untouched.">Lua 的 MIT 许可证全文随其源码保留在 <code>thirdparty/lua/</code> 内。合并到 TinyOS 的改动仅限于：裸机 libc shim、freestanding 编译配置与 VFS 文件桥，未改动 Lua 语言本体。</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <h2 data-zh="MIT License 全文" data-en="MIT License text">MIT License 全文</h2>
+        <p class="lede" data-zh="以下即仓库根目录 <code>LICENSE</code> 文件的完整内容。" data-en="Below is the complete content of the <code>LICENSE</code> file at the repository root.">以下即仓库根目录 <code>LICENSE</code> 文件的完整内容。</p>
+        <div class="code-block" role="region" aria-label="MIT License" tabindex="0">
+<pre><code>MIT License
+
+Copyright (c) 2026 TinyOS Genesis Project
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <h2 data-zh="怎么署名" data-en="How to attribute">怎么署名</h2>
+        <div class="code-block" role="region" aria-label="attribution example" tabindex="0">
+<pre><code>Copyright (c) 2026 TinyOS Genesis Project
+
+TinyOS Genesis is released under the MIT License.
+You are free to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the software.
+
+Source: https://github.com/ysb-discowave/TinyOS-Genesis</code></pre>
+        </div>
+        <p class="note" data-zh="在自己的产品里引用本项目时，保留上面的版权行与 MIT 声明即可；是否在界面或文档里额外致谢，由你决定，MIT 不强制。" data-en="When you credit the project in your own product, keeping the copyright line and the MIT notice is enough. Whether to add extra acknowledgements in your UI or docs is your call; MIT does not require it.">在自己的产品里引用本项目时，保留上面的版权行与 MIT 声明即可；是否在界面或文档里额外致谢，由你决定，MIT 不强制。</p>
       </div>
     </section>
   </main>
