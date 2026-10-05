@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="TinyOS Genesis v0.1 networking: the e1000 NIC driver, the handle-based TCP socket API, FTP client/server (TinyFTP), the TinySMB server, the SSHD.TNCR server, the QEMU port-forward table, and the hard limits of a cooperative single-threaded kernel." />
+  <title>TinyOS Genesis v0.1 · 网络协议 / Network</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main" data-zh="跳到主内容" data-en="Skip to main content">跳到主内容</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="index.html" aria-label="TinyOS Genesis home">
+        <svg class="brand-logo" width="28" height="28" viewBox="0 0 32 32" role="img" aria-hidden="true">
+          <rect x="6" y="6" width="20" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>
+          <rect x="12" y="12" width="8" height="8" rx="1" fill="currentColor"/>
+          <g stroke="currentColor" stroke-width="2">
+            <line x1="16" y1="2" x2="16" y2="6"/><line x1="16" y1="26" x2="16" y2="30"/>
+            <line x1="2" y1="16" x2="6" y2="16"/><line x1="26" y1="16" x2="30" y2="16"/>
+            <line x1="6" y1="6" x2="9" y2="9"/><line x1="26" y1="6" x2="23" y2="9"/>
+            <line x1="6" y1="26" x2="9" y2="23"/><line x1="26" y1="26" x2="23" y2="23"/>
+          </g>
+        </svg>
+        <span class="brand-name">TinyOS&nbsp;Genesis</span>
+      </a>
+
+      <nav class="site-nav" aria-label="主导航">
+        <a href="index.html" data-zh="首页" data-en="Home">首页</a>
+        <a href="tinysh.html" data-zh="tinysh" data-en="tinysh">tinysh</a>
+        <a href="filesystem.html" data-zh="文件系统" data-en="Filesystem">文件系统</a>
+        <a href="packages.html" data-zh="软件包" data-en="Packages">软件包</a>
+        <a href="network.html" aria-current="page" data-zh="网络" data-en="Network">网络</a>
+        <a href="license.html" data-zh="协议" data-en="License">协议</a>
+      </nav>
+
+      <button id="lang-toggle" class="lang-toggle" type="button"
+              data-zh="EN" data-en="中文" aria-label="切换语言 / Switch language">EN</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- PAGE HEAD -->
+    <section class="page-head" aria-labelledby="page-title">
+      <div class="wrap">
+        <h1 id="page-title" data-zh="网络协议栈：e1000 之上能跑 FTP/SMB/SSH" data-en="Network stack: FTP/SMB/SSH on top of e1000">网络协议栈：e1000 之上能跑 FTP/SMB/SSH</h1>
+        <p class="lede" data-zh="内核网络栈是真实存在的代码（src/kernel/net/），不是规划。它从 e1000 网卡驱动起，提供句柄化 TCP socket，再往上实现 FTP 客户端/服务端、TinySMB 服务端，以及用户态的 SSH 服务端。本页逐项拆解，并重点讲清协作式单线程带来的限制。"
+                       data-en="The kernel network stack is real code (src/kernel/net/), not a plan. It starts with the e1000 NIC driver, offers a handle-based TCP socket layer, then FTP client/server, the TinySMB server, and the user-space SSH server. This page breaks it down and pays special attention to the limits of a cooperative single-threaded kernel.">内核网络栈是真实存在的代码（src/kernel/net/），不是规划。它从 e1000 网卡驱动起，提供句柄化 TCP socket，再往上实现 FTP 客户端/服务端、TinySMB 服务端，以及用户态的 SSH 服务端。本页逐项拆解，并重点讲清协作式单线程带来的限制。</p>
+
+        <nav class="section-toc" aria-label="本页区块导航">
+          <a href="#overview" data-zh="概览" data-en="Overview">概览</a>
+          <a href="#e1000" data-zh="e1000" data-en="e1000">e1000</a>
+          <a href="#socket" data-zh="TCP socket" data-en="TCP socket">TCP socket</a>
+          <a href="#ftp" data-zh="FTP" data-en="FTP">FTP</a>
+          <a href="#smb" data-zh="SMB" data-en="SMB">SMB</a>
+          <a href="#ssh" data-zh="SSH" data-en="SSH">SSH</a>
+          <a href="#ports" data-zh="端口转发" data-en="Port fwd">端口转发</a>
+          <a href="#limits" data-zh="单线程限制" data-en="Limits">单线程限制</a>
+          <a href="#demo" data-zh="示例程序" data-en="Demo">示例程序</a>
+        </nav>
+      </div>
+    </section>
+
+    <!-- 1. OVERVIEW -->
+    <section id="overview" class="section" aria-labelledby="overview-title">
+      <div class="wrap">
+        <h2 id="overview-title" data-zh="概览：协议族一览" data-en="Overview: the protocol family">概览：协议族一览</h2>
+        <p class="section-lead" data-zh="网络栈分层很浅：一块真实驱动的网卡，一道句柄化的 TCP socket，三个跑在它上面的应用协议（FTP 双向、SMB 服务端、SSH 用户态）。下面这张图是架构，不是宣传。"
+                              data-en="The stack is shallow: one real NIC driver, one handle-based TCP socket layer, and three application protocols on top (FTP both ways, SMB server, SSH in user space). The diagram is architecture, not hype.">网络栈分层很浅：一块真实驱动的网卡，一道句柄化的 TCP socket，三个跑在它上面的应用协议（FTP 双向、SMB 服务端、SSH 用户态）。下面这张图是架构，不是宣传。</p>
+
+        <ol class="arch" aria-label="网络栈分层">
+          <li class="arch-node">
+            <span class="arch-tag">e1000</span>
+            <span class="arch-detail" data-zh="网卡驱动（QEMU 默认）" data-en="NIC driver (QEMU default)">网卡驱动（QEMU 默认）</span>
+          </li>
+          <li class="arch-arrow" aria-hidden="true">→</li>
+          <li class="arch-node">
+            <span class="arch-tag">TCP socket</span>
+            <span class="arch-detail" data-zh="句柄化 listen/accept/recv/send" data-en="handle-based listen/accept/recv/send">句柄化 listen/accept/recv/send</span>
+          </li>
+          <li class="arch-arrow" aria-hidden="true">→</li>
+          <li class="arch-node">
+            <span class="arch-tag">FTP</span>
+            <span class="arch-detail" data-zh="客户端 + 服务端" data-en="client + server">客户端 + 服务端</span>
+          </li>
+          <li class="arch-arrow" aria-hidden="true">→</li>
+          <li class="arch-node">
+            <span class="arch-tag">SMB</span>
+            <span class="arch-detail" data-zh="TinySMB 服务端" data-en="TinySMB server">TinySMB 服务端</span>
+          </li>
+          <li class="arch-arrow" aria-hidden="true">→</li>
+          <li class="arch-node arch-node-userspace">
+            <span class="arch-tag">SSH</span>
+            <span class="arch-detail" data-zh="SSHD.TNCR 用户态" data-en="SSHD.TNCR user-space">SSHD.TNCR 用户态</span>
+          </li>
+        </ol>
+
+        <ul class="matrix">
+          <li class="card">
+            <h3>e1000.c / e1000.h</h3>
+            <p data-zh="e1000 网卡驱动。QEMU 默认的虚拟网卡就是这个型号，所以开箱即可联调。" data-en="The e1000 NIC driver. QEMU's default virtual NIC is exactly this model, so it works out of the box.">e1000 网卡驱动。QEMU 默认的虚拟网卡就是这个型号，所以开箱即可联调。</p>
+          </li>
+          <li class="card">
+            <h3>net.c / net.h</h3>
+            <p data-zh="网络栈核心：地址、收发、连接管理都在这里。" data-en="Network stack core: addressing, send/receive and connection management live here.">网络栈核心：地址、收发、连接管理都在这里。</p>
+          </li>
+          <li class="card">
+            <h3>ftp.c / ftp.h</h3>
+            <p data-zh="FTP：既是客户端也是服务端。" data-en="FTP: both a client and a server.">FTP：既是客户端也是服务端。</p>
+          </li>
+          <li class="card">
+            <h3>smb.c / smb.h</h3>
+            <p data-zh="SMB：内部叫 TinySMB，是服务端实现。" data-en="SMB: internally called TinySMB, a server implementation.">SMB：内部叫 TinySMB，是服务端实现。</p>
+          </li>
+          <li class="card">
+            <h3>sock.c / sock.h</h3>
+            <p data-zh="TCP socket：句柄化接口，带 timeout_ms / poll_recv / readable / local_ip。" data-en="TCP socket: a handle-based interface with timeout_ms / poll_recv / readable / local_ip.">TCP socket：句柄化接口，带 timeout_ms / poll_recv / readable / local_ip。</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 2. e1000 -->
+    <section id="e1000" class="section" aria-labelledby="e1000-title">
+      <div class="wrap">
+        <h2 id="e1000-title" data-zh="e1000 网卡驱动" data-en="e1000 NIC driver">e1000 网卡驱动</h2>
+        <p class="section-lead" data-zh="e1000.c 实现了 QEMU 默认虚拟网卡的驱动。内核启动时打印一行真实的网卡配置，直接在下面这行日志里核对 MAC / IP / 网关。"
+                              data-en="e1000.c drives QEMU's default virtual NIC. At boot the kernel prints one real NIC line — verify the MAC / IP / gateway right in the log below.">e1000.c 实现了 QEMU 默认虚拟网卡的驱动。内核启动时打印一行真实的网卡配置，直接在下面这行日志里核对 MAC / IP / 网关。</p>
+
+        <div class="term" role="img" aria-label="e1000 启动日志">
+          <div class="term-bar" aria-hidden="true">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="term-title">boot log — e1000</span>
+          </div>
+          <pre class="term-body" aria-label="e1000 启动日志输出">[net ] e1000 NIC: MAC 52:54:00:12:34:56  IP 10.0.2.15/24 GW 10.0.2.2</pre>
+        </div>
+
+        <ul class="matrix">
+          <li class="card">
+            <h3>MAC 52:54:00:12:34:56</h3>
+            <p data-zh="QEMU 给 e1000 分配的默认 MAC 地址。" data-en="The default MAC QEMU assigns to the e1000.">QEMU 给 e1000 分配的默认 MAC 地址。</p>
+          </li>
+          <li class="card">
+            <h3>IP 10.0.2.15/24</h3>
+            <p data-zh="QEMU user-mode 网络默认就是 10.0.2.0/24 这一段。" data-en="QEMU user-mode networking defaults to exactly the 10.0.2.0/24 segment.">QEMU user-mode 网络默认就是 10.0.2.0/24 这一段。</p>
+          </li>
+          <li class="card">
+            <h3>GW 10.0.2.2</h3>
+            <p data-zh="同一网段的默认网关，出网流量经它转发。" data-en="The default gateway on the same segment; outbound traffic is forwarded through it.">同一网段的默认网关，出网流量经它转发。</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 3. TCP SOCKET API -->
+    <section id="socket" class="section" aria-labelledby="socket-title">
+      <div class="wrap">
+        <h2 id="socket-title" data-zh="TCP socket API（句柄化）" data-en="TCP socket API (handle-based)">TCP socket API（句柄化）</h2>
+        <p class="section-lead" data-zh="用户程序通过 tinyos_api_t 函数指针表拿到网络能力。socket 这一族是「句柄化」设计：listen 拿到监听句柄 lh，accept 拿到连接句柄 h，之后 recv / send / close 都围绕 h 转。每个会阻塞的调用都带 timeout_ms，避免把单线程内核卡死。"
+                              data-en="User programs reach networking through the tinyos_api_t function-pointer table. The socket family is “handle-based”: listen returns a listen handle lh, accept returns a connection handle h, and recv / send / close all revolve around h. Every blocking call takes timeout_ms so the single-threaded kernel is never frozen.">用户程序通过 tinyos_api_t 函数指针表拿到网络能力。socket 这一族是「句柄化」设计：listen 拿到监听句柄 lh，accept 拿到连接句柄 h，之后 recv / send / close 都围绕 h 转。每个会阻塞的调用都带 timeout_ms，避免把单线程内核卡死。</p>
+
+        <div class="code-block" role="img" aria-label="TCP socket 与网络 API 函数表">
+          <pre aria-label="socket / network API functions"><code>// TCP socket（句柄化）
+sock_listen(port)
+sock_accept(lh, timeout_ms)
+sock_recv(h, buf, max, timeout_ms)
+sock_poll_recv(h, buf, max)
+sock_send(h, buf, n)
+sock_close(h)
+sock_closed(h)
+sock_readable(h)
+sock_local_ip()
+
+// FTP / SMB 客户端
+ftp_get(host, port, user, pass, remote, local)
+ftp_put(host, port, user, pass, local, remote)
+smb_get(host, port, share, user, pass, remote, local)
+smb_put(host, port, share, user, pass, local, remote)
+
+// 辅助
+net_info()
+itoa(v, buf)
+
+// 非阻塞控制台输入（服务主循环的“逃生舱”）
+local_kbhit()
+local_getc()</code></pre>
+        </div>
+
+        <div class="callout" role="note">
+          <h3 data-zh="句柄化意味着什么" data-en="What “handle-based” means">句柄化意味着什么</h3>
+          <p data-zh="连接不是隐式的全局状态，而是用一个整数句柄 h 显式传递。这样单个服务进程可以同时持有一堆连接、按需要轮询（sock_poll_recv / sock_readable），而不会在某一连接上死等。配合 timeout_ms，单线程也能“看起来像”在并发处理。"
+             data-en="A connection is not implicit global state; it is an integer handle h passed around explicitly. A single service process can thus hold many connections and poll them on demand (sock_poll_recv / sock_readable) instead of blocking forever on one. With timeout_ms, a single thread can “look like” it is handling things concurrently.">连接不是隐式的全局状态，而是用一个整数句柄 h 显式传递。这样单个服务进程可以同时持有一堆连接、按需要轮询（sock_poll_recv / sock_readable），而不会在某一连接上死等。配合 timeout_ms，单线程也能“看起来像”在并发处理。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. FTP -->
+    <section id="ftp" class="section" aria-labelledby="ftp-title">
+      <div class="wrap">
+        <h2 id="ftp-title" data-zh="FTP：客户端 + 服务端" data-en="FTP: client + server">FTP：客户端 + 服务端</h2>
+        <p class="section-lead" data-zh="net 命令同时提供 FTP 客户端传输（net get / net put）和服务端（net start ftp）。服务端默认监听 21，PASV 数据端口是 21000。"
+                              data-en="The net command offers both FTP client transfer (net get / net put) and a server (net start ftp). The server listens on 21 by default; the PASV data port is 21000.">net 命令同时提供 FTP 客户端传输（net get / net put）和服务端（net start ftp）。服务端默认监听 21，PASV 数据端口是 21000。</p>
+
+        <h3 data-zh="启动 FTP 服务端" data-en="Starting the FTP server">启动 FTP 服务端</h3>
+        <div class="code-block" role="img" aria-label="启动 FTP 服务端命令">
+          <pre aria-label="net start ftp"><code>net start ftp [port]     # 默认 21；PASV 数据端口 21000
+                        # 提示：launcher must forward both</code></pre>
+        </div>
+
+        <h3 data-zh="客户端传输" data-en="Client transfer">客户端传输</h3>
+        <div class="code-block" role="img" aria-label="net get / put 用法">
+          <pre aria-label="net get / put"><code>net get ftp &lt;host&gt; &lt;port&gt; &lt;user&gt; &lt;pass&gt; &lt;local&gt; &lt;remote&gt;
+net put ftp &lt;host&gt; &lt;port&gt; &lt;user&gt; &lt;pass&gt; &lt;local&gt; &lt;remote&gt;</code></pre>
+        </div>
+
+        <div class="callout" role="note" style="border-left-color: var(--warn); background: rgba(255,209,102,.08);">
+          <h3 data-zh="⚠️ 为什么启动器要同时转发控制端口和数据端口" data-en="⚠️ Why the launcher must forward both control and data ports">⚠️ 为什么启动器要同时转发控制端口和数据端口</h3>
+          <p data-zh="FTP 用两条连接：21 是控制通道（命令/响应），真正传文件走的是 PASV 模式下的另一条数据连接（本栈默认 21000）。客户端连进来时，数据端口也必须从宿主机可达，否则传文件会卡在“等数据连接”。所以启动器（start.bat / build.ps1）要同时把 21（或 2222→22 之外）和 21000 这两类端口都做转发，缺一个 FTP 就只能“登录成功、传不了文件”。"
+             data-en="FTP uses two connections: 21 is the control channel (commands/responses), while the actual file transfer runs over a second data connection in PASV mode (default 21000 here). When a client connects, the data port must also be reachable from the host, or the transfer stalls waiting for the data connection. So the launcher (start.bat / build.ps1) must forward both the control and the data ports; miss one and FTP can “log in fine but never transfer”.">FTP 用两条连接：21 是控制通道（命令/响应），真正传文件走的是 PASV 模式下的另一条数据连接（本栈默认 21000）。客户端连进来时，数据端口也必须从宿主机可达，否则传文件会卡在“等数据连接”。所以启动器（start.bat / build.ps1）要同时把 21（或 2222→22 之外）和 21000 这两类端口都做转发，缺一个 FTP 就只能“登录成功、传不了文件”。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. SMB -->
+    <section id="smb" class="section" aria-labelledby="smb-title">
+      <div class="wrap">
+        <h2 id="smb-title" data-zh="SMB（TinySMB）服务端" data-en="SMB (TinySMB) server">SMB（TinySMB）服务端</h2>
+        <p class="section-lead" data-zh="smb.c 在内核里实现了一个叫 TinySMB 的服务端，默认监听 445。客户端侧同样有 smb_get / smb_put 两个传输函数（注意比 FTP 多一个 share 参数）。"
+                              data-en="smb.c implements a server internally called TinySMB, listening on 445 by default. On the client side there are also smb_get / smb_put transfer functions (note the extra share parameter vs FTP).">smb.c 在内核里实现了一个叫 TinySMB 的服务端，默认监听 445。客户端侧同样有 smb_get / smb_put 两个传输函数（注意比 FTP 多一个 share 参数）。</p>
+
+        <div class="code-block" role="img" aria-label="启动 TinySMB 与客户端用法">
+          <pre aria-label="net start smb / smb client"><code># 启动 TinySMB 服务端（默认 445）
+net start smb [port]
+
+# 客户端传输（多一个 share 参数）
+net get smb &lt;host&gt; &lt;port&gt; &lt;share&gt; &lt;user&gt; &lt;pass&gt; &lt;local&gt; &lt;remote&gt;
+net put smb &lt;host&gt; &lt;port&gt; &lt;share&gt; &lt;user&gt; &lt;pass&gt; &lt;local&gt; &lt;remote&gt;</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. SSH -->
+    <section id="ssh" class="section" aria-labelledby="ssh-title">
+      <div class="wrap">
+        <h2 id="ssh-title" data-zh="SSH：SSHD.TNCR 用户态服务" data-en="SSH: the SSHD.TNCR user-space server">SSH：SSHD.TNCR 用户态服务</h2>
+        <p class="section-lead" data-zh="SSH 不是内核内建，而是一个用户态程序 /bin/SSHD.TNCR（114500 字节）。它的运行参数来自 netconf 配置，对外通过端口转发 2222→22 暴露给宿主机。"
+                              data-en="SSH is not kernel-builtin; it is a user-space program /bin/SSHD.TNCR (114500 bytes). It reads its parameters from netconf, and is exposed to the host via the port forward 2222→22.">SSH 不是内核内建，而是一个用户态程序 /bin/SSHD.TNCR（114500 字节）。它的运行参数来自 netconf 配置，对外通过端口转发 2222→22 暴露给宿主机。</p>
+
+        <ul class="matrix">
+          <li class="card">
+            <h3>/bin/SSHD.TNCR</h3>
+            <p data-zh="114500 字节的用户态 SSH 服务端，独立的进程。" data-en="A 114500-byte user-space SSH server, a separate process.">114500 字节的用户态 SSH 服务端，独立的进程。</p>
+          </li>
+          <li class="card">
+            <h3>netconf</h3>
+            <p data-zh="SSHD 的运行配置来源（网络配置 / 账号等）。" data-en="Where SSHD gets its runtime config (network settings / accounts, etc.).">SSHD 的运行配置来源（网络配置 / 账号等）。</p>
+          </li>
+          <li class="card">
+            <h3>2222 → 22</h3>
+            <p data-zh="宿主机的 2222 转发到 TinyOS 的 22，使外部 SSH 客户端能连进来。" data-en="Host 2222 forwards to TinyOS 22, letting external SSH clients connect in.">宿主机的 2222 转发到 TinyOS 的 22，使外部 SSH 客户端能连进来。</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 7. PORT FORWARD TABLE -->
+    <section id="ports" class="section" aria-labelledby="ports-title">
+      <div class="wrap">
+        <h2 id="ports-title" data-zh="端口转发对照表" data-en="Port-forward table">端口转发对照表</h2>
+        <p class="section-lead" data-zh="QEMU 把宿主机端口转发进 TinyOS。下面来自 start.bat 与 build.ps1 里真实写的规则。注意 FTP 占了两条（控制 21 + 数据 21000）。"
+                              data-en="QEMU forwards host ports into TinyOS. The table below comes from the rules actually written in start.bat and build.ps1. Note FTP takes two entries (control 21 + data 21000).">QEMU 把宿主机端口转发进 TinyOS。下面来自 start.bat 与 build.ps1 里真实写的规则。注意 FTP 占了两条（控制 21 + 数据 21000）。</p>
+
+        <div style="overflow:auto; border:1px solid var(--line); border-radius:var(--radius);">
+          <table style="width:100%; border-collapse:collapse; font-size:14px; min-width:520px;">
+            <caption style="caption-side:top; text-align:left; padding:12px 14px; color:var(--muted); font-size:13px;" data-zh="宿主端口 ↔ TinyOS 端口（来自 start.bat / build.ps1）" data-en="Host port ↔ TinyOS port (from start.bat / build.ps1)">宿主端口 ↔ TinyOS 端口（来自 start.bat / build.ps1）</caption>
+            <thead>
+              <tr style="background:rgba(255,255,255,.03); text-align:left;">
+                <th scope="col" style="padding:10px 14px; border-bottom:1px solid var(--line); color:#fff;" data-zh="宿主端口" data-en="Host port">宿主端口</th>
+                <th scope="col" style="padding:10px 14px; border-bottom:1px solid var(--line); color:#fff;" data-zh="TinyOS 端口" data-en="TinyOS port">TinyOS 端口</th>
+                <th scope="col" style="padding:10px 14px; border-bottom:1px solid var(--line); color:#fff;" data-zh="用途" data-en="Purpose">用途</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom:1px solid var(--line);">
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted); white-space:nowrap;">2222</td>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--accent); white-space:nowrap;">22</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="SSH（SSHD.TNCR）。" data-en="SSH (SSHD.TNCR).">SSH（SSHD.TNCR）。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted); white-space:nowrap;">21</td>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--accent); white-space:nowrap;">21</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="FTP 控制通道（build.ps1 中的规则）。" data-en="FTP control channel (the rule in build.ps1).">FTP 控制通道（build.ps1 中的规则）。</td>
+              </tr>
+              <tr>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted); white-space:nowrap;">21000</td>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--accent); white-space:nowrap;">21000</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="FTP PASV 数据端口（start.bat 与 build.ps1 都转发）。" data-en="FTP PASV data port (forwarded by both start.bat and build.ps1).">FTP PASV 数据端口（start.bat 与 build.ps1 都转发）。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="chart-note" data-zh="start.bat 里显式转发的是 2222 和 21000；build.ps1 的 $net 定义里额外包含 21→21。无论哪份脚本，FTP 的“控制 + 数据”两条端口都必须同时可达，否则传文件会失败。"
+           data-en="start.bat explicitly forwards 2222 and 21000; build.ps1's $net definition additionally includes 21→21. Either way, FTP's “control + data” pair must both be reachable, or transfers fail.">start.bat 里显式转发的是 2222 和 21000；build.ps1 的 $net 定义里额外包含 21→21。无论哪份脚本，FTP 的“控制 + 数据”两条端口都必须同时可达，否则传文件会失败。</p>
+      </div>
+    </section>
+
+    <!-- 8. LIMITS -->
+    <section id="limits" class="section" aria-labelledby="limits-title">
+      <div class="wrap">
+        <h2 id="limits-title" data-zh="协作式单线程的限制（重点）" data-en="The cooperative single-threaded limit (key point)">协作式单线程的限制（重点）</h2>
+        <p class="section-lead" data-zh="内核是协作式单线程：net_poll_all() 一次只处理一个连接。这条约束直接决定了服务端必须怎么写，是理解本栈最需要记住的一点。"
+                              data-en="The kernel is cooperative and single-threaded: net_poll_all() handles one connection at a time. This constraint dictates how a server must be written — the single most important thing to remember about this stack.">内核是协作式单线程：net_poll_all() 一次只处理一个连接。这条约束直接决定了服务端必须怎么写，是理解本栈最需要记住的一点。</p>
+
+        <div class="callout" role="note" style="border-left-color: var(--warn); background: rgba(255,209,102,.08);">
+          <h3 data-zh="⚠️ 不能做 keep-alive 长连接" data-en="⚠️ No keep-alive long connections">⚠️ 不能做 keep-alive 长连接</h3>
+          <p data-zh="因为一次只服务一个连接，如果某个连接保持打开、等服务端“等下一个请求”，它会一直占着 net_poll_all() 的档期。结果：其它连接饿死、整体超时。所以服务端必须每请求独立建连，并在响应末尾使用 Connection: close —— 处理完立刻关，把档期让给下一个连接。"
+             data-en="Because only one connection is served at a time, if a connection stays open waiting for “the next request”, it hogs net_poll_all()'s slot. The result: other connections starve and the whole thing times out. So a server must open an independent connection per request and use Connection: close at the end of each response — finish, close immediately, yield the slot to the next connection.">因为一次只服务一个连接，如果某个连接保持打开、等服务端“等下一个请求”，它会一直占着 net_poll_all() 的档期。结果：其它连接饿死、整体超时。所以服务端必须每请求独立建连，并在响应末尾使用 Connection: close —— 处理完立刻关，把档期让给下一个连接。</p>
+        </div>
+
+        <ul class="matrix">
+          <li class="card">
+            <h3>net_poll_all()</h3>
+            <p data-zh="一次只处理一个连接；没有真正的并发调度。" data-en="Handles one connection per call; no real concurrent scheduling.">一次只处理一个连接；没有真正的并发调度。</p>
+          </li>
+          <li class="card">
+            <h3>每请求独立建连</h3>
+            <p data-zh="服务端不要复用旧连接，处理完就用 Connection: close 关掉。" data-en="Servers should not reuse old connections; finish and close with Connection: close.">服务端不要复用旧连接，处理完就用 Connection: close 关掉。</p>
+          </li>
+          <li class="card">
+            <h3>CPU 负载怎么算</h3>
+            <p data-zh="用 g_sys_idle_ticks 占空比反推：pit.c 在 pit_sleep 里累加空闲节拍，空闲越多负载越低。" data-en="Derived from g_sys_idle_ticks duty ratio: pit.c accumulates idle ticks inside pit_sleep, so more idle means lower load.">用 g_sys_idle_ticks 占空比反推：pit.c 在 pit_sleep 里累加空闲节拍，空闲越多负载越低。</p>
+          </li>
+          <li class="card">
+            <h3>local_kbhit() / local_getc()</h3>
+            <p data-zh="非阻塞控制台输入，是服务主循环的“逃生舱”——可以中途按键退出，而不阻塞在网络轮询上。" data-en="Non-blocking console input; the “escape hatch” of a service main loop — lets you interrupt with a key instead of being stuck on network polling.">非阻塞控制台输入，是服务主循环的“逃生舱”——可以中途按键退出，而不阻塞在网络轮询上。</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 9. DEMO PROGRAM -->
+    <section id="demo" class="section" aria-labelledby="demo-title">
+      <div class="wrap">
+        <h2 id="demo-title" data-zh="示例程序：/bin/net_demo.TNCR" data-en="Example program: /bin/net_demo.TNCR">示例程序：/bin/net_demo.TNCR</h2>
+        <p class="section-lead" data-zh="仓库里带一个最小的网络示例程序 /bin/net_demo.TNCR，体积只有 467 字节，演示如何调用上面的 socket / FTP / SMB API。它的源码打包进了 romfs，可直接在 tinysh 里运行。"
+                              data-en="The repo ships a minimal networking example, /bin/net_demo.TNCR, just 467 bytes, showing how to call the socket / FTP / SMB APIs above. Its source is packed into romfs and can be run directly from tinysh.">仓库里带一个最小的网络示例程序 /bin/net_demo.TNCR，体积只有 467 字节，演示如何调用上面的 socket / FTP / SMB API。它的源码打包进了 romfs，可直接在 tinysh 里运行。</p>
+
+        <div class="code-block" role="img" aria-label="运行 net_demo 示例">
+          <pre aria-label="run net_demo"><code>tinysh&gt; /bin/net_demo.TNCR     # 467 bytes，演示网络 API 用法</code></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <p><strong>TinyOS Genesis v0.1</strong> — <span data-zh="从零手写的裸机 x86 操作系统" data-en="a from-scratch bare-metal x86 OS">从零手写的裸机 x86 操作系统</span></p>
+      <p class="footer-meta" data-zh="内核、引导器、用户程序全部自研 · MIT License · 2026" data-en="kernel, bootloader and user programs all built in-house · MIT License · 2026">内核、引导器、用户程序全部自研 · MIT License · 2026</p>
+      <p class="footer-links"><a href="index.html" data-zh="首页" data-en="Home">首页</a> · <a href="license.html" data-zh="开源协议" data-en="License">开源协议</a></p>
+    </div>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="TinyOS Genesis v0.1 — tinysh 在线体验页：一个能真正敲命令的浏览器端 tinysh 行为模拟器，覆盖 19 条命令、虚拟文件系统、进程表与硬件寄存器访问。" />
+  <title>TinyOS Genesis v0.1 · tinysh 在线体验</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* ---- sim-* : only what is not already covered by style.css ----
+       Reuses --bg / --accent / --good / --mono / --line / --panel vars. */
+    .sim-term { margin-top: 18px; }
+    .sim-screen {
+      max-height: 400px; overflow-y: auto;
+      font-family: var(--mono); font-size: 14px; line-height: 1.6;
+      color: #c8f7ff; white-space: pre-wrap; word-break: break-word;
+      padding: 16px 18px; margin: 0; background: #060a12;
+    }
+    .sim-inputline {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 18px; border-top: 1px solid var(--line);
+      background: #060a12; font-family: var(--mono); font-size: 14px;
+    }
+    .sim-prompt { color: var(--good); white-space: pre; user-select: none; }
+    .sim-input {
+      flex: 1; min-width: 0; background: transparent; border: none; outline: none;
+      color: #c8f7ff; font-family: var(--mono); font-size: 14px; caret-color: var(--accent);
+    }
+    .sim-input:focus { outline: none; }
+    .sim-toolbar { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .btn-sim {
+      background: transparent; color: var(--muted); font-family: var(--font);
+      border: 1px solid var(--line); border-radius: 8px;
+      padding: 7px 16px; font-weight: 700; font-size: 14px; cursor: pointer;
+    }
+    .btn-sim:hover { border-color: var(--accent); color: var(--accent); }
+    .sim-help { color: var(--muted); font-size: 13.5px; margin: 0 0 4px; }
+
+    /* ---- command table ---- */
+    .cmd-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+    .cmd-table th, .cmd-table td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .cmd-table th { color: var(--accent); font-size: 13px; letter-spacing: .3px; }
+    .cmd-table td.code { font-family: var(--mono); color: var(--accent); white-space: nowrap; }
+    .cmd-table td.desc { color: var(--muted); }
+    .cmd-table td.ex { font-family: var(--mono); color: var(--good); white-space: nowrap; }
+    .cmd-table tr:hover td { background: rgba(255,255,255,.02); }
+
+    /* ---- code chip reuse ---- */
+    .hint-code { font-family: var(--mono); color: var(--accent); background: rgba(77,208,225,.1); padding: 1px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main" data-zh="跳到主内容" data-en="Skip to main content">跳到主内容</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="index.html" aria-label="TinyOS Genesis home">
+        <svg class="brand-logo" width="28" height="28" viewBox="0 0 32 32" role="img" aria-hidden="true">
+          <rect x="6" y="6" width="20" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>
+          <rect x="12" y="12" width="8" height="8" rx="1" fill="currentColor"/>
+          <g stroke="currentColor" stroke-width="2">
+            <line x1="16" y1="2" x2="16" y2="6"/><line x1="16" y1="26" x2="16" y2="30"/>
+            <line x1="2" y1="16" x2="6" y2="16"/><line x1="26" y1="16" x2="30" y2="16"/>
+            <line x1="6" y1="6" x2="9" y2="9"/><line x1="26" y1="6" x2="23" y2="9"/>
+            <line x1="6" y1="26" x2="9" y2="23"/><line x1="26" y1="26" x2="23" y2="23"/>
+          </g>
+        </svg>
+        <span class="brand-name">TinyOS&nbsp;Genesis</span>
+      </a>
+
+      <nav class="site-nav" aria-label="主导航">
+        <a href="index.html" data-zh="首页" data-en="Home">首页</a>
+        <a href="tinysh.html" aria-current="page" data-zh="tinysh" data-en="tinysh">tinysh</a>
+        <a href="filesystem.html" data-zh="文件系统" data-en="Filesystem">文件系统</a>
+        <a href="packages.html" data-zh="软件包" data-en="Packages">软件包</a>
+        <a href="network.html" data-zh="网络" data-en="Network">网络</a>
+        <a href="license.html" data-zh="协议" data-en="License">协议</a>
+      </nav>
+
+      <button id="lang-toggle" class="lang-toggle" type="button"
+              data-zh="EN" data-en="中文" aria-label="切换语言 / Switch language">EN</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="page-head wrap" aria-labelledby="page-title">
+      <p class="kicker" data-zh="用户态 shell · 浏览器在线体验" data-en="User-space shell · live in your browser">用户态 shell · 浏览器在线体验</p>
+      <h1 id="page-title">tinysh 在线体验</h1>
+      <p class="lede" data-zh="这是 TinyOS Genesis 的 shell。下面是一个真正能敲命令的模拟器，覆盖真实的 19 条命令、虚拟文件系统、进程表与硬件寄存器访问。它不是内核内建，而是一个用户态 TNCR 程序。"
+         data-en="This is the shell of TinyOS Genesis. Below is a truly interactive simulator covering the real 19 commands, a virtual filesystem, the process table and hardware-register access. It is not kernel-builtin — it is a user-space TNCR program.">这是 TinyOS Genesis 的 shell。下面是一个真正能敲命令的模拟器，覆盖真实的 19 条命令、虚拟文件系统、进程表与硬件寄存器访问。它不是内核内建，而是一个用户态 TNCR 程序。</p>
+    </section>
+
+    <!-- ============ 模拟器 ============ -->
+    <section class="section wrap" aria-labelledby="sim-title">
+      <h2 id="sim-title" data-zh="在线模拟器" data-en="Live simulator">在线模拟器</h2>
+      <p class="section-lead" data-zh="在下面的终端里输入命令，回车执行。支持 ↑/↓ 调用历史、Tab 补全命令名、Ctrl+C 取消当前行。提示符为 tinysh&gt; 。"
+         data-en="Type commands in the terminal below and press Enter. Supports ArrowUp/ArrowDown history, Tab completion of command names, and Ctrl+C to cancel the current line. The prompt is tinysh&gt; .">在下面的终端里输入命令，回车执行。支持 ↑/↓ 调用历史、Tab 补全命令名、Ctrl+C 取消当前行。提示符为 tinysh&gt; 。</p>
+
+      <div class="callout" role="note">
+        <h3 data-zh="诚实声明：这是浏览器行为模拟" data-en="Honest note: this is a browser behavior simulation">诚实声明：这是浏览器行为模拟</h3>
+        <p data-zh="本页只在你的浏览器里模拟 tinysh 的行为，用于演示与学习；它并没有在网页里运行真实内核。真实系统请用仓库里的 start.bat 启动到 QEMU。模拟器的文件系统、进程表与设备寄存器均为前端内置的示例状态，不是真机数据。"
+           data-en="This page only simulates tinysh's behavior inside your browser, for demonstration and learning; it does NOT run a real kernel in the webpage. To run the real system, use start.bat in the repo to boot into QEMU. The filesystem, process table and device registers here are front-end sample state, not real hardware data.">本页只在你的浏览器里模拟 tinysh 的行为，用于演示与学习；它并没有在网页里运行真实内核。真实系统请用仓库里的 start.bat 启动到 QEMU。模拟器的文件系统、进程表与设备寄存器均为前端内置的示例状态，不是真机数据。</p>
+      </div>
+
+      <div class="term sim-term">
+        <div class="term-bar" aria-hidden="true">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="term-title">tinysh — live simulation</span>
+        </div>
+        <pre id="simScreen" class="sim-screen" role="log" aria-live="polite" aria-label="tinysh 终端输出"></pre>
+        <div class="sim-inputline">
+          <label for="simInput" class="sim-prompt">tinysh&gt;</label>
+          <input id="simInput" class="sim-input" type="text" autocomplete="off"
+                 autocapitalize="off" autocorrect="off" spellcheck="false"
+                 aria-label="tinysh 命令输入" />
+        </div>
+      </div>
+
+      <div class="sim-toolbar">
+        <button id="simReset" class="btn-sim" type="button"
+                data-zh="重置会话" data-en="Reset session">重置会话</button>
+        <button id="simFocus" class="btn-sim" type="button"
+                data-zh="聚焦终端" data-en="Focus terminal">聚焦终端</button>
+        <span class="sim-help" data-zh="提示：先试试 help、ls /bin、cat /home/readme.txt、devlist。"
+              data-en="Tip: try help, ls /bin, cat /home/readme.txt, devlist.">提示：先试试 help、ls /bin、cat /home/readme.txt、devlist。</span>
+      </div>
+    </section>
+
+    <!-- ============ 是什么 ============ -->
+    <section class="section wrap" aria-labelledby="what-title">
+      <h2 id="what-title" data-zh="tinysh 是什么" data-en="What is tinysh">tinysh 是什么</h2>
+      <p class="section-lead" data-zh="一个真正的用户态 TNCR 程序，不是内核内建。"
+         data-en="A genuine user-space TNCR program, not a kernel builtin.">一个真正的用户态 TNCR 程序，不是内核内建。</p>
+
+      <div class="card">
+        <h3 data-zh="/bin/tinysh.TNCR · 46408 字节" data-en="/bin/tinysh.TNCR · 46408 bytes">/bin/tinysh.TNCR · 46408 字节</h3>
+        <p data-zh="tinysh 是打包成自定义 TNCR 格式的用户程序，由 TNCR 加载器载入用户态运行。它不能直接碰硬件或内存，只能通过 tinyos_api_t 函数指针表去访问内核提供的服务（文件、进程、设备寄存器）。内核里没有写死一个 shell，换掉这个 TNCR 文件就能换 shell。"
+           data-en="tinysh is a user program packaged in the custom TNCR format and loaded into user space by the TNCR loader. It cannot touch hardware or memory directly; it can only reach kernel services (files, processes, device registers) through the tinyos_api_t function-pointer table. The kernel has no hard-wired shell — swap this TNCR file and you swap the shell.">tinysh 是打包成自定义 TNCR 格式的用户程序，由 TNCR 加载器载入用户态运行。它不能直接碰硬件或内存，只能通过 <span class="hint-code">tinyos_api_t</span> 函数指针表去访问内核提供的服务（文件、进程、设备寄存器）。内核里没有写死一个 shell，换掉这个 TNCR 文件就能换 shell。</p>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <h3 data-zh="两个后端：真实内核 vs 离线自测" data-en="Two backends: real kernel vs offline self-test">两个后端：真实内核 vs 离线自测</h3>
+        <p data-zh="源码在本仓库 src/tinysh/，通过同一套命令逻辑对接两个后端：kernel_api_tinyos.c 是 TNCR 产品后端（跑在真机 / QEMU），kernel_api_host.c 是 POSIX 离线自测后端（在开发机上用宿主系统跑同一份逻辑，便于单元测试）。登录后自动进入 tinysh；exit 退回内核 shell。"
+           data-en="Source lives in src/tinysh/ in this repo, with one command core wired to two backends: kernel_api_tinyos.c is the TNCR product backend (runs on real hardware / QEMU), and kernel_api_host.c is the POSIX offline self-test backend (runs the same logic on the dev machine via the host OS, for unit tests). After login you land in tinysh; `exit` drops back to the kernel shell.">源码在本仓库 <span class="hint-code">src/tinysh/</span>，通过同一套命令逻辑对接两个后端：<span class="hint-code">kernel_api_tinyos.c</span> 是 TNCR 产品后端（跑在真机 / QEMU），<span class="hint-code">kernel_api_host.c</span> 是 POSIX 离线自测后端（在开发机上用宿主系统跑同一份逻辑，便于单元测试）。登录后自动进入 tinysh；<code>exit</code> 退回内核 shell。</p>
+      </div>
+    </section>
+
+    <!-- ============ 命令表 ============ -->
+    <section class="section wrap" aria-labelledby="cmds-title">
+      <h2 id="cmds-title" data-zh="命令表（19 条）" data-en="Command reference (19)">命令表（19 条）</h2>
+      <p class="section-lead" data-zh="英文命令名 + 中文说明 + 例子。所有上屏输出强制英文 ASCII（见下方设计约束）。"
+         data-en="English command names + Chinese descriptions + examples. All on-screen output is forced to English ASCII (see design constraints below).">英文命令名 + 中文说明 + 例子。所有上屏输出强制英文 ASCII（见下方设计约束）。</p>
+
+      <table class="cmd-table">
+        <thead>
+          <tr><th data-zh="命令" data-en="Command">命令</th><th data-zh="说明" data-en="Description">说明</th><th data-zh="例子" data-en="Example">例子</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="code">help</td><td class="desc" data-zh="列出全部命令及一行说明" data-en="List all commands with a one-line description">列出全部命令及一行说明</td><td class="ex">help</td></tr>
+          <tr><td class="code">version</td><td class="desc" data-zh="显示版本串" data-en="Show the version string">显示版本串</td><td class="ex">version</td></tr>
+          <tr><td class="code">sysinfo</td><td class="desc" data-zh="显示 CPU / 内存总量 / 空闲 / 运行时间 / 进程数" data-en="Show CPU / total mem / free mem / uptime / process count">显示 CPU / 内存总量 / 空闲 / 运行时间 / 进程数</td><td class="ex">sysinfo</td></tr>
+          <tr><td class="code">date</td><td class="desc" data-zh="显示系统日期与运行时间" data-en="Show system date and uptime">显示系统日期与运行时间</td><td class="ex">date</td></tr>
+          <tr><td class="code">ls</td><td class="desc" data-zh="列出目录内容（&lt;DIR&gt; / &lt;FILE&gt; + 字节数）" data-en="List directory contents (&lt;DIR&gt; / &lt;FILE&gt; + size)">列出目录内容（&lt;DIR&gt; / &lt;FILE&gt; + 字节数）</td><td class="ex">ls /bin</td></tr>
+          <tr><td class="code">cd</td><td class="desc" data-zh="切换目录（无参数回到 /home）" data-en="Change directory (no arg returns to /home)">切换目录（无参数回到 /home）</td><td class="ex">cd /bin</td></tr>
+          <tr><td class="code">pwd</td><td class="desc" data-zh="显示当前工作目录" data-en="Print the working directory">显示当前工作目录</td><td class="ex">pwd</td></tr>
+          <tr><td class="code">cat</td><td class="desc" data-zh="显示文件内容（TNCR 二进制不显示）" data-en="Print file contents (TNCR binaries not shown)">显示文件内容（TNCR 二进制不显示）</td><td class="ex">cat /home/readme.txt</td></tr>
+          <tr><td class="code">mkdir</td><td class="desc" data-zh="新建目录" data-en="Create a directory">新建目录</td><td class="ex">mkdir /home/demo</td></tr>
+          <tr><td class="code">rm</td><td class="desc" data-zh="删除文件（v0.1 不能删目录）" data-en="Remove a file (v0.1 cannot remove directories)">删除文件（v0.1 不能删目录）</td><td class="ex">rm /home/notes.txt</td></tr>
+          <tr><td class="code">touch</td><td class="desc" data-zh="新建空文件" data-en="Create an empty file">新建空文件</td><td class="ex">touch /home/x.txt</td></tr>
+          <tr><td class="code">ps</td><td class="desc" data-zh="显示进程表（PID/STATE/SESS/UID/NAME）" data-en="Show the process table (PID/STATE/SESS/UID/NAME)">显示进程表（PID/STATE/SESS/UID/NAME）</td><td class="ex">ps</td></tr>
+          <tr><td class="code">kill</td><td class="desc" data-zh="终止进程" data-en="Terminate a process">终止进程</td><td class="ex">kill 3</td></tr>
+          <tr><td class="code">devlist</td><td class="desc" data-zh="列出 7 个硬件设备" data-en="List the 7 hardware devices">列出 7 个硬件设备</td><td class="ex">devlist</td></tr>
+          <tr><td class="code">readdev</td><td class="desc" data-zh="读取设备寄存器" data-en="Read a device register">读取设备寄存器</td><td class="ex">readdev com1 0x3F8</td></tr>
+          <tr><td class="code">writedev</td><td class="desc" data-zh="写入设备寄存器" data-en="Write a device register">写入设备寄存器</td><td class="ex">writedev vga 0x3D4 0x02</td></tr>
+          <tr><td class="code">echo</td><td class="desc" data-zh="原样回显文本" data-en="Echo a line of text verbatim">原样回显文本</td><td class="ex">echo hello tinyos</td></tr>
+          <tr><td class="code">clear</td><td class="desc" data-zh="清屏" data-en="Clear the screen">清屏</td><td class="ex">clear</td></tr>
+          <tr><td class="code">exit</td><td class="desc" data-zh="退出 tinysh（回到内核 shell）" data-en="Exit tinysh (return to the kernel shell)">退出 tinysh（回到内核 shell）</td><td class="ex">exit</td></tr>
+        </tbody>
+      </table>
+
+      <p class="chart-note" data-zh="关于 /home/hello.mc：它是项目里真实存在的 Minecraft 方块脚本（.mc），由 mc 运行时执行。可试 cat /home/hello.mc 查看示例内容。"
+         data-en="About /home/hello.mc: it is a real Minecraft-style block script (.mc) shipped in the project, executed by the mc runtime. Try `cat /home/hello.mc` to see a sample.">关于 /home/hello.mc：它是项目里真实存在的 Minecraft 方块脚本（.mc），由 mc 运行时执行。可试 <code>cat /home/hello.mc</code> 查看示例内容。</p>
+    </section>
+
+    <!-- ============ 设计约束 ============ -->
+    <section class="section wrap" aria-labelledby="constraint-title">
+      <h2 id="constraint-title" data-zh="设计约束：为什么上屏文案强制英文 ASCII" data-en="Design constraint: why on-screen text is forced to English ASCII">设计约束：为什么上屏文案强制英文 ASCII</h2>
+      <p class="section-lead" data-zh="这是一个真实且有说服力的工程细节，不是偷懒。"
+         data-en="A real and defensible engineering detail, not laziness.">这是一个真实且有说服力的工程细节，不是偷懒。</p>
+
+      <div class="callout" role="note">
+        <h3 data-zh="VGA 文本模式 = CP437 字形表" data-en="VGA text mode = the CP437 glyph table">VGA 文本模式 = CP437 字形表</h3>
+        <p data-zh="图形桌面运行在 VGA 80×25 文本模式，字形表是 CP437（IBM PC 字符集），里面根本没有汉字字形，一个「中」字根本画不出来。更要命的是：UTF-8 下一个汉字占 3 个字符编码，而 VGA 文本缓冲区每个字只占 1 格，于是 1 个汉字会被当成 3 个字节、撑成 3 格，直接把一行顶出 80 列，整屏错位。所以所有上屏文案强制英文 ASCII；代码注释才用中文。"
+           data-en="The desktop runs in VGA 80×25 text mode using the CP437 (IBM PC) glyph table, which has no Chinese glyphs at all — a character like “中” simply cannot be drawn. Worse: in UTF-8 one Chinese character is 3 bytes, while the VGA text buffer gives each character a single cell, so one Chinese char becomes 3 cells and pushes a line past the 80-column limit, breaking the whole screen. Hence all on-screen text is forced to English ASCII; Chinese is used only in code comments.">图形桌面运行在 VGA 80×25 文本模式，字形表是 CP437（IBM PC 字符集），里面根本没有汉字字形，一个「中」字根本画不出来。更要命的是：UTF-8 下一个汉字占 3 个字符编码，而 VGA 文本缓冲区每个字只占 1 格，于是 1 个汉字会被当成 3 个字节、撑成 3 格，直接把一行顶出 80 列，整屏错位。所以所有上屏文案强制英文 ASCII；代码注释才用中文。</p>
+      </div>
+    </section>
+
+    <!-- ============ 测试 ============ -->
+    <section class="section wrap" aria-labelledby="tests-title">
+      <h2 id="tests-title" data-zh="测试：27 项端到端自动化测试" data-en="Testing: 27 end-to-end automated tests">测试：27 项端到端自动化测试</h2>
+      <p class="section-lead" data-zh="全部通过，无人工点击。"
+         data-en="All passing, no manual clicks.">全部通过，无人工点击。</p>
+      <p data-zh="tinysh 的 19 条命令由 27 项端到端自动化测试覆盖。测试在 QEMU 串口上驱动真实内核，逐字比对 tinysh 的上屏输出（英文 ASCII），包含：未知命令、缺参数、文件不存在、删目录被拒绝、Tab 补全等边界。整个测试套件由脚本自动运行，无需人工点击，结果 27/27 通过。"
+         data-en="tinysh's 19 commands are covered by 27 end-to-end automated tests. The tests drive the real kernel over the QEMU serial port and compare tinysh's on-screen output (English ASCII) character by character, including edge cases: unknown command, missing argument, file not found, directory-removal rejected, and Tab completion. The whole suite runs automatically — no manual clicks — and passes 27/27.">tinysh 的 19 条命令由 27 项端到端自动化测试覆盖。测试在 QEMU 串口上驱动真实内核，逐字比对 tinysh 的上屏输出（英文 ASCII），包含：未知命令、缺参数、文件不存在、删目录被拒绝、Tab 补全等边界。整个测试套件由脚本自动运行，无需人工点击，结果 27/27 通过。</p>
+      <ul class="hero-facts" aria-label="测试关键事实">
+        <li><strong>27/27</strong> <span data-zh="端到端测试通过" data-en="end-to-end tests passing">端到端测试通过</span></li>
+        <li><strong>QEMU</strong> <span data-zh="串口驱动，无人工点击" data-en="serial-driven, no manual clicks">串口驱动，无人工点击</span></li>
+        <li><strong>19</strong> <span data-zh="条命令全覆盖" data-en="commands fully covered">条命令全覆盖</span></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <p><strong>TinyOS Genesis v0.1</strong> — <span data-zh="从零手写的裸机 x86 操作系统" data-en="a from-scratch bare-metal x86 OS">从零手写的裸机 x86 操作系统</span></p>
+      <p class="footer-meta" data-zh="内核、引导器、用户程序全部自研 · MIT License · 2026" data-en="kernel, bootloader and user programs all built in-house · MIT License · 2026">内核、引导器、用户程序全部自研 · MIT License · 2026</p>
+      <p class="footer-links"><a href="index.html" data-zh="首页" data-en="Home">首页</a> · <a href="license.html" data-zh="开源协议" data-en="License">开源协议</a></p>
+    </div>
+  </footer>
+
+  <script>
+  /* ============================================================
+     tinysh.html — interactive tinysh simulator
+     Pure native JS. No libraries, no CDN. English ASCII only
+     inside the terminal. Uses sim-* classes to avoid touching
+     style.css / app.js.  Does NOT call applyLang (app.js owns it).
+     ============================================================ */
+  (function () {
+    'use strict';
+
+    /* ---------- helpers ---------- */
+    function pad(s, n) { s = String(s); while (s.length < n) s += ' '; return s; }
+    function padl(s, n) { s = String(s); while (s.length < n) s = ' ' + s; return s; }
+    function hex(n) { return n.toString(16).toLowerCase(); }
+    function hex2(n) { var h = hex(n & 0xff); return h.length < 2 ? '0' + h : h; }
+    function parseAddr(s) {
+      if (typeof s !== 'string') return null;
+      var v;
+      if (/^0x[0-9a-fA-F]+$/.test(s)) v = parseInt(s.slice(2), 16);
+      else if (/^[0-9]+$/.test(s)) v = parseInt(s, 10);
+      else return null;
+      return isNaN(v) ? null : v;
+    }
+
+    /* ---------- virtual filesystem (real romfs data) ---------- */
+    function makeDir(children) { return { type: 'dir', children: children || {} }; }
+    function makeFile(size, content) { return { type: 'file', size: size, content: content || '' }; }
+
+    function buildFS() {
+      var README =
+        'TinyOS Genesis v0.1\n' +
+        '====================\n' +
+        'Welcome to the home directory.\n\n' +
+        'This is sample text shown by `cat /home/readme.txt`.\n' +
+        'The real system drops you into tinysh right after login.\n\n' +
+        'Try:  ls /bin\n' +
+        '      cat /home/hello.mc\n' +
+        '      devlist\n' +
+        '      readdev com1 0x3F8\n\n' +
+        'NOTE: this web page is a behavior simulation, not the real kernel.\n';
+      var NOTES =
+        'TODO:\n' +
+        ' - wire up the e1000 driver for real LAN tests\n' +
+        ' - finish the multi-disk ATA layer\n' +
+        ' - write more .TNCR demos\n\n' +
+        'DONE:\n' +
+        ' - tinysh user shell (19 commands)\n' +
+        ' - Lua 5.4.7 in user space\n' +
+        ' - VGA text desktop + PS/2 input\n';
+      var PASSWD =
+        'root:x:0:0:root:/home:/bin/tinysh.TNCR\n' +
+        'guest:x:100:100:guest:/home:/bin/tinysh.TNCR\n';
+      var SHADOW =
+        'root:!!:0:99999:7:::\n' +
+        'guest:!!:100:99999:7:::\n';
+      var DESKTOP = 'TinyOS desktop session file\n';
+      var HELLO_MC =
+        '# hello.mc - a Minecraft-style block script for TinyOS\n' +
+        '# Executed by the mc runtime. This is a real artifact in the romfs.\n' +
+        '# Run context: /home/hello.mc (1215 bytes)\n\n' +
+        'place stone at 0 0 0\n' +
+        'place stone at 1 0 0\n' +
+        'place stone at 2 0 0\n' +
+        'place grass at 0 1 0\n' +
+        'place grass at 1 1 0\n' +
+        'place grass at 2 1 0\n' +
+        'place torch at 1 2 0\n\n' +
+        'function build_wall(x0, x1, z)\n' +
+        '  for x = x0 to x1\n' +
+        '    place brick at x 0 z\n' +
+        '    place brick at x 1 z\n' +
+        '  end\n' +
+        'end\n\n' +
+        'build_wall 0 4 3\n' +
+        'build_wall 0 4 -3\n\n' +
+        'say "hello from TinyOS Genesis"\n';
+
+      var FS = makeDir({
+        bin: makeDir({
+          'tinysh.TNCR': makeFile(46408),
+          'LUA.TNCR': makeFile(210584),
+          'SSHD.TNCR': makeFile(114500),
+          'EDIT.TNCR': makeFile(45980),
+          'CC.TNCR': makeFile(162680),
+          'JVM.TNCR': makeFile(5851),
+          'hello.TNCR': makeFile(214),
+          'count.TNCR': makeFile(877),
+          'basic_demo.TNCR': makeFile(204),
+          'cpp_demo.TNCR': makeFile(339),
+          'gui_demo.TNCR': makeFile(470),
+          'minic_demo.TNCR': makeFile(500),
+          'net_demo.TNCR': makeFile(467),
+          'tiny_demo.TNCR': makeFile(238)
+        }),
+        home: makeDir({
+          'readme.txt': makeFile(804, README),
+          'notes.txt': makeFile(660, NOTES),
+          'hello.mc': makeFile(1215, HELLO_MC)
+        }),
+        etc: makeDir({
+          'passwd': makeFile(85, PASSWD),
+          'shadow': makeFile(224, SHADOW)
+        }),
+        sys: makeDir({}),
+        dev: makeDir({}),
+        'DESKTOP.TNCR': makeFile(34, DESKTOP)
+      });
+      return FS;
+    }
+
+    function buildProcs() {
+      return [
+        { pid: 1, state: 'RUNNING', sess: 0, uid: 0, name: '/bin/tinysh.TNCR' },
+        { pid: 2, state: 'SLEEP',   sess: 0, uid: 0, name: '/bin/LUA.TNCR' },
+        { pid: 3, state: 'SLEEP',   sess: 0, uid: 0, name: '/bin/SSHD.TNCR' },
+        { pid: 7, state: 'RUNNING', sess: 1, uid: 0, name: '/bin/EDIT.TNCR' }
+      ];
+    }
+
+    var DEVS = ['com1', 'com2', 'pic', 'pit', 'vga', 'kbd', 'ide0'];
+    var COMMANDS = ['help', 'version', 'sysinfo', 'date', 'ls', 'cd', 'pwd',
+                    'cat', 'mkdir', 'rm', 'touch', 'ps', 'kill', 'devlist',
+                    'readdev', 'writedev', 'echo', 'clear', 'exit'];
+
+    /* ---------- state ---------- */
+    var FS, cwd, procs, exited, bootTime;
+    var hist = [], histIndex = 0;
+
+    var screen, input;
+
+    function resolvePath(p) {
+      if (!p) return null;
+      var segs = (p.charAt(0) === '/' ? p : (cwd + '/' + p)).split('/');
+      var abs = [];
+      for (var i = 0; i < segs.length; i++) {
+        var s = segs[i];
+        if (s === '' || s === '.') continue;
+        if (s === '..') { if (abs.length) abs.pop(); continue; }
+        abs.push(s);
+      }
+      var cur = FS;
+      for (var j = 0; j < abs.length; j++) {
+        if (cur.type !== 'dir') return null;
+        var child = cur.children[abs[j]];
+        if (!child) return null;
+        cur = child;
+      }
+      return { node: cur, abs: abs };
+    }
+
+    function parentNodeOf(abs) {
+      if (!abs.length) return null;
+      var r = resolvePath('/' + abs.slice(0, -1).join('/'));
+      return r ? r.node : null;
+    }
+
+    function termPath(abs) { return abs.length ? '/' + abs.join('/') : '/'; }
+
+    /* ---------- output ---------- */
+    function print(line) {
+      screen.textContent += (line === undefined ? '' : line) + '\n';
+    }
+    function scrollBottom() { screen.scrollTop = screen.scrollHeight; }
+    function wrongArgs() {
+      print('tinysh: wrong number of arguments');
+      print("type 'help' for the command list");
+    }
+
+    /* ---------- commands ---------- */
+    function cmdHelp() {
+      print('tinysh commands:');
+      print('  help     list available commands');
+      print('  version  show version string');
+      print('  sysinfo  show cpu/memory/uptime/processes');
+      print('  date     show date and uptime');
+      print('  ls       list directory contents');
+      print('  cd       change directory');
+      print('  pwd      print working directory');
+      print('  cat      print file contents');
+      print('  mkdir    create a directory');
+      print('  rm       remove a file');
+      print('  touch    create an empty file');
+      print('  ps       list processes');
+      print('  kill     terminate a process');
+      print('  devlist  list hardware devices');
+      print('  readdev  read a device register');
+      print('  writedev write a device register');
+      print('  echo     echo a line of text');
+      print('  clear    clear the screen');
+      print('  exit     exit tinysh (return to kernel shell)');
+    }
+
+    function cmdSysinfo() {
+      var up = Math.floor((Date.now() - bootTime) / 1000);
+      print('CPU:        i386 (TinyOS protected mode)');
+      print('Mem total:  8192 KB');
+      print('Mem free:   7479 KB');
+      print('Uptime:     ' + up + ' s');
+      print('Processes:  ' + procs.length);
+    }
+
+    function cmdDate() {
+      var d = new Date();
+      var hh = pad(d.getHours(), 2), mm = pad(d.getMinutes(), 2), ss = pad(d.getSeconds(), 2);
+      var up = Math.floor((Date.now() - bootTime) / 1000);
+      print('2026-01-01 ' + hh + ':' + mm + ':' + ss + ' (uptime ' + up + 's)');
+    }
+
+    function cmdLs(args) {
+      var target = args.length ? args[0] : cwd;
+      var r = resolvePath(target);
+      if (!r || r.node.type !== 'dir') { print('tinysh: file or path not found'); return; }
+      var keys = Object.keys(r.node.children).sort();
+      if (!keys.length) { print('(empty)'); return; }
+      keys.forEach(function (k) {
+        var ch = r.node.children[k];
+        if (ch.type === 'dir') print('  <DIR>        ' + k);
+        else print('  <FILE> ' + padl(String(ch.size), 7) + '  ' + k);
+      });
+    }
+
+    function cmdCd(args) {
+      if (!args.length) { cwd = '/home'; return; }
+      var r = resolvePath(args[0]);
+      if (!r) { print('tinysh: file or path not found'); return; }
+      if (r.node.type !== 'dir') { print('tinysh: not a directory'); return; }
+      cwd = termPath(r.abs);
+    }
+
+    function cmdCat(args) {
+      if (!args.length) { wrongArgs(); return; }
+      var r = resolvePath(args[0]);
+      if (!r || r.node.type !== 'file') { print('tinysh: file or path not found'); return; }
+      if (r.node.content === '') { print('TNCR executable (binary) - not displayed in this simulation'); return; }
+      print(r.node.content.replace(/\n$/, ''));
+    }
+
+    function splitParentName(path) {
+      path = path.replace(/\/+$/, '');
+      var idx = path.lastIndexOf('/');
+      if (idx < 0) return { parent: cwd, name: path };
+      if (idx === 0) return { parent: '/', name: path.slice(1) };
+      return { parent: path.slice(0, idx), name: path.slice(idx + 1) };
+    }
+
+    function cmdMkdir(args) {
+      if (!args.length) { wrongArgs(); return; }
+      var pn = splitParentName(args[0]);
+      if (pn.name === '' || pn.name === '.' || pn.name === '..') { print('tinysh: invalid name'); return; }
+      var pr = resolvePath(pn.parent);
+      if (!pr || pr.node.type !== 'dir') { print('tinysh: file or path not found'); return; }
+      if (pr.node.children[pn.name]) { print('tinysh: file or path already exists'); return; }
+      pr.node.children[pn.name] = makeDir({});
+    }
+
+    function cmdTouch(args) {
+      if (!args.length) { wrongArgs(); return; }
+      var pn = splitParentName(args[0]);
+      if (pn.name === '' || pn.name === '.' || pn.name === '..') { print('tinysh: invalid name'); return; }
+      var pr = resolvePath(pn.parent);
+      if (!pr || pr.node.type !== 'dir') { print('tinysh: file or path not found'); return; }
+      if (pr.node.children[pn.name]) { print('tinysh: file or path already exists'); return; }
+      pr.node.children[pn.name] = makeFile(0, '');
+    }
+
+    function cmdRm(args) {
+      if (!args.length) { wrongArgs(); return; }
+      var r = resolvePath(args[0]);
+      if (!r) { print('tinysh: file or path not found'); return; }
+      if (r.node.type === 'dir') { print('tinysh: permission denied'); return; }
+      var pn = r.abs[r.abs.length - 1];
+      var parent = parentNodeOf(r.abs);
+      if (parent && parent.children[pn]) delete parent.children[pn];
+    }
+
+    function cmdPs() {
+      print('PID  STATE   SESS  UID   NAME');
+      procs.forEach(function (p) {
+        print(padl(String(p.pid), 4) + '  ' + pad(p.state, 7) + '  ' +
+               padl(String(p.sess), 4) + '  ' + padl(String(p.uid), 3) + '   ' + p.name);
+      });
+    }
+
+    function cmdKill(args) {
+      if (!args.length) { wrongArgs(); return; }
+      var pid = parseInt(args[0], 10);
+      if (isNaN(pid)) { wrongArgs(); return; }
+      var idx = -1;
+      for (var i = 0; i < procs.length; i++) if (procs[i].pid === pid) idx = i;
+      if (idx < 0) { print('tinysh: no such process: ' + pid); return; }
+      var name = procs[idx].name;
+      procs.splice(idx, 1);
+      print('tinysh: killed pid ' + pid + ' (' + name + ')');
+    }
+
+    function cmdDevlist() { DEVS.forEach(function (d) { print(d); }); }
+
+    function cmdReaddev(args) {
+      if (args.length < 2) { wrongArgs(); return; }
+      var dev = args[0], addrStr = args[1];
+      if (DEVS.indexOf(dev) < 0) { print('tinysh: no such device: ' + dev); return; }
+      var addr = parseAddr(addrStr);
+      if (addr === null) { print('tinysh: invalid address: ' + addrStr); return; }
+      var val = (addr * 1103515245 + 12345) & 0xff;
+      print('0x' + hex(addr) + ' = 0x' + hex2(val) + ' (' + val + ')');
+    }
+
+    function cmdWritedev(args) {
+      if (args.length < 3) { wrongArgs(); return; }
+      var dev = args[0], addrStr = args[1], valStr = args[2];
+      if (DEVS.indexOf(dev) < 0) { print('tinysh: no such device: ' + dev); return; }
+      var addr = parseAddr(addrStr);
+      if (addr === null) { print('tinysh: invalid address: ' + addrStr); return; }
+      var val = parseAddr(valStr);
+      if (val === null) { print('tinysh: invalid value: ' + valStr); return; }
+      print('tinysh: wrote 0x' + hex2(val) + ' to ' + dev + ' @ 0x' + hex(addr));
+    }
+
+    function cmdExit() {
+      exited = true;
+      print('[tinysh] exited - this is a browser simulation; the page stays open.');
+      print('[tinysh] press "Reset session" to start a new tinysh session.');
+    }
+
+    /* ---------- dispatcher ---------- */
+    function run(cmd, args) {
+      if (exited) {
+        print('tinysh: session already exited - press Reset to relaunch.');
+        return;
+      }
+      switch (cmd) {
+        case 'help': cmdHelp(); break;
+        case 'version': print('TinyOS Genesis v0.1 | tinysh v0.1 | i386 protected mode'); break;
+        case 'sysinfo': cmdSysinfo(); break;
+        case 'date': cmdDate(); break;
+        case 'ls': cmdLs(args); break;
+        case 'cd': cmdCd(args); break;
+        case 'pwd': print(cwd); break;
+        case 'cat': cmdCat(args); break;
+        case 'mkdir': cmdMkdir(args); break;
+        case 'rm': cmdRm(args); break;
+        case 'touch': cmdTouch(args); break;
+        case 'ps': cmdPs(); break;
+        case 'kill': cmdKill(args); break;
+        case 'devlist': cmdDevlist(); break;
+        case 'readdev': cmdReaddev(args); break;
+        case 'writedev': cmdWritedev(args); break;
+        case 'echo': print(args.join(' ')); break;
+        case 'clear': screen.textContent = ''; break;
+        case 'exit': cmdExit(); break;
+        default: print('tinysh: unknown command');
+      }
+    }
+
+    /* ---------- input handling ---------- */
+    function onKey(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submit();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (hist.length) {
+          histIndex = Math.max(0, histIndex - 1);
+          input.value = hist[histIndex];
+          moveCaretEnd();
+        }
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (hist.length) {
+          histIndex = Math.min(hist.length, histIndex + 1);
+          input.value = (histIndex === hist.length) ? '' : hist[histIndex];
+          moveCaretEnd();
+        }
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        complete();
+      } else if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
+        e.preventDefault();
+        print('tinysh> ' + input.value + '^C');
+        input.value = '';
+        scrollBottom();
+      }
+    }
+
+    function moveCaretEnd() {
+      var v = input.value;
+      input.setSelectionRange(v.length, v.length);
+    }
+
+    function complete() {
+      var v = input.value;
+      if (v.indexOf(' ') >= 0) return; // only complete the first token
+      if (v === '') { print(COMMANDS.join('  ')); scrollBottom(); return; }
+      var matches = COMMANDS.filter(function (c) { return c.indexOf(v) === 0; });
+      if (matches.length === 1) {
+        input.value = matches[0] + ' ';
+        moveCaretEnd();
+      } else if (matches.length > 1) {
+        print('tinysh> ' + v);
+        print(matches.join('  '));
+        scrollBottom();
+      }
+    }
+
+    function submit() {
+      var raw = input.value;
+      print('tinysh> ' + raw);
+      if (raw.trim() !== '') {
+        hist.push(raw);
+        histIndex = hist.length;
+        var parts = raw.trim().split(/\s+/);
+        run(parts[0], parts.slice(1));
+      }
+      input.value = '';
+      scrollBottom();
+    }
+
+    /* ---------- session lifecycle ---------- */
+    function printBanner() {
+      print('TinyOS Genesis v0.1  -  tinysh live simulation');
+      print('(behavior simulation in your browser; not a real kernel)');
+      print("type 'help' for commands, 'exit' to leave.");
+      print('');
+    }
+
+    function resetSession() {
+      FS = buildFS();
+      procs = buildProcs();
+      cwd = '/home';
+      exited = false;
+      bootTime = Date.now();
+      hist = []; histIndex = 0;
+      screen.textContent = '';
+      printBanner();
+      input.value = '';
+      input.focus();
+      scrollBottom();
+    }
+
+    /* ---------- init ---------- */
+    function init() {
+      screen = document.getElementById('simScreen');
+      input = document.getElementById('simInput');
+      if (!screen || !input) return;
+
+      resetSession();
+
+      input.addEventListener('keydown', onKey);
+
+      document.getElementById('simReset').addEventListener('click', function () {
+        resetSession();
+      });
+      document.getElementById('simFocus').addEventListener('click', function () {
+        input.focus();
+      });
+      // Click anywhere on the terminal focuses the input.
+      var term = screen.parentElement;
+      if (term) term.addEventListener('click', function () { input.focus(); });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  })();
+  </script>
+</body>
+</html>

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="TinyOS Genesis v0.1 — a from-scratch, bootable bare-metal x86 (i386) operating system." />
-  <title>TinyOS Genesis v0.1</title>
+  <meta name="description" content="TinyOS Genesis v0.1 — a from-scratch, bootable bare-metal x86 (i386) operating system. Product overview, size, capabilities, architecture, stack and quick start." />
+  <title>TinyOS Genesis v0.1 · 首页 / 产品介绍</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -12,7 +12,7 @@
 
   <header class="site-header">
     <div class="wrap header-inner">
-      <a class="brand" href="#hero" aria-label="TinyOS Genesis home">
+      <a class="brand" href="index.html" aria-label="TinyOS Genesis home">
         <svg class="brand-logo" width="28" height="28" viewBox="0 0 32 32" role="img" aria-hidden="true">
           <rect x="6" y="6" width="20" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>
           <rect x="12" y="12" width="8" height="8" rx="1" fill="currentColor"/>
@@ -27,14 +27,12 @@
       </a>
 
       <nav class="site-nav" aria-label="主导航">
-        <a href="#hero" data-zh="首页" data-en="Home">首页</a>
-        <a href="#size" data-zh="体积" data-en="Size">体积</a>
-        <a href="#demo" data-zh="演示" data-en="Demo">演示</a>
-        <a href="#matrix" data-zh="能力" data-en="Capabilities">能力</a>
-        <a href="#arch" data-zh="架构" data-en="Architecture">架构</a>
-        <a href="#stack" data-zh="技术栈" data-en="Stack">技术栈</a>
-        <a href="#start" data-zh="上手" data-en="Quick Start">上手</a>
-        <a href="#roadmap" data-zh="路线图" data-en="Roadmap">路线图</a>
+        <a href="index.html" aria-current="page" data-zh="首页" data-en="Home">首页</a>
+        <a href="tinysh.html" data-zh="tinysh" data-en="tinysh">tinysh</a>
+        <a href="filesystem.html" data-zh="文件系统" data-en="Filesystem">文件系统</a>
+        <a href="packages.html" data-zh="软件包" data-en="Packages">软件包</a>
+        <a href="network.html" data-zh="网络" data-en="Network">网络</a>
+        <a href="license.html" data-zh="协议" data-en="License">协议</a>
       </nav>
 
       <button id="lang-toggle" class="lang-toggle" type="button"
@@ -71,6 +69,54 @@
 <span class="art-cursor">_</span></pre>
           </div>
         </div>
+      </div>
+
+      <nav class="section-toc wrap" aria-label="本页区块导航">
+        <a href="#intro" data-zh="产品介绍" data-en="Overview">产品介绍</a>
+        <a href="#size" data-zh="体积" data-en="Size">体积</a>
+        <a href="#demo" data-zh="演示" data-en="Demo">演示</a>
+        <a href="#matrix" data-zh="能力" data-en="Capabilities">能力</a>
+        <a href="#arch" data-zh="架构" data-en="Architecture">架构</a>
+        <a href="#stack" data-zh="技术栈" data-en="Stack">技术栈</a>
+        <a href="#start" data-zh="上手" data-en="Quick Start">上手</a>
+        <a href="#roadmap" data-zh="路线图" data-en="Roadmap">路线图</a>
+      </nav>
+    </section>
+
+    <!-- PRODUCT INTRO (hub) -->
+    <section id="intro" class="section" aria-labelledby="intro-title">
+      <div class="wrap">
+        <h2 id="intro-title" data-zh="产品介绍" data-en="Product overview">产品介绍</h2>
+        <p class="section-lead" data-zh="TinyOS Genesis v0.1 是从零手写的裸机 x86 操作系统：可引导镜像约 612 KB，内置 tinysh 用户态 shell、Lua 5.4.7、图形文本桌面与网络组件。它不是 Linux，也不是 Linux 内核，全部从第一行汇编与 C 写起。下面按模块进入各个专题页。"
+                               data-en="TinyOS Genesis v0.1 is a from-scratch bare-metal x86 OS: a ~612 KB bootable image shipping the tinysh user-space shell, Lua 5.4.7, a text desktop and networking. It is not Linux and not a Linux kernel — every line starts from assembly and C. Jump into a module below.">TinyOS Genesis v0.1 是从零手写的裸机 x86 操作系统：可引导镜像约 612 KB，内置 tinysh 用户态 shell、Lua 5.4.7、图形文本桌面与网络组件。它不是 Linux，也不是 Linux 内核，全部从第一行汇编与 C 写起。下面按模块进入各个专题页。</p>
+
+        <ul class="matrix">
+          <li class="card">
+            <h3 data-zh="tinysh 在线体验" data-en="tinysh live">tinysh 在线体验</h3>
+            <p data-zh="19 条命令的用户态 shell，登录后自动进入，可在线试玩真实会话。" data-en="The 19-command user-space shell — auto-launched after login; try a real session.">19 条命令的用户态 shell，登录后自动进入，可在线试玩真实会话。</p>
+            <a class="card-link" href="tinysh.html" data-zh="进入 →" data-en="Open →">进入 →</a>
+          </li>
+          <li class="card">
+            <h3 data-zh="文件系统" data-en="Filesystem">文件系统</h3>
+            <p data-zh="VFS 抽象 + 压缩只读 romfs，以及 ATA 多磁盘抽象层（含 MBR 分区表）。" data-en="VFS abstraction + compressed read-only romfs, plus the ATA multi-disk abstraction (with MBR partition table).">VFS 抽象 + 压缩只读 romfs，以及 ATA 多磁盘抽象层（含 MBR 分区表）。</p>
+            <a class="card-link" href="filesystem.html" data-zh="进入 →" data-en="Open →">进入 →</a>
+          </li>
+          <li class="card">
+            <h3 data-zh="软件包管理器" data-en="Packages">软件包管理器</h3>
+            <p data-zh="用户程序打包成自定义 TNCR 格式，由 TNCR 加载器载入用户态。" data-en="User programs packaged in the custom TNCR format, loaded into user space by the TNCR loader.">用户程序打包成自定义 TNCR 格式，由 TNCR 加载器载入用户态。</p>
+            <a class="card-link" href="packages.html" data-zh="进入 →" data-en="Open →">进入 →</a>
+          </li>
+          <li class="card">
+            <h3 data-zh="网络协议" data-en="Networking">网络协议</h3>
+            <p data-zh="e1000 网卡驱动；FTP 服务器/客户端、TinySMB、TCP socket、tcping。" data-en="e1000 NIC driver; FTP server/client, TinySMB, TCP socket, tcping.">e1000 网卡驱动；FTP 服务器/客户端、TinySMB、TCP socket、tcping。</p>
+            <a class="card-link" href="network.html" data-zh="进入 →" data-en="Open →">进入 →</a>
+          </li>
+          <li class="card">
+            <h3 data-zh="开源协议" data-en="License">开源协议</h3>
+            <p data-zh="MIT License，Copyright (c) 2026 TinyOS Genesis Project。" data-en="MIT License, Copyright (c) 2026 TinyOS Genesis Project.">MIT License，Copyright (c) 2026 TinyOS Genesis Project。</p>
+            <a class="card-link" href="license.html" data-zh="进入 →" data-en="Open →">进入 →</a>
+          </li>
+        </ul>
       </div>
     </section>
 
@@ -257,20 +303,31 @@
     <section id="start" class="section" aria-labelledby="start-title">
       <div class="wrap">
         <h2 id="start-title" data-zh="快速上手（Windows）" data-en="Quick start (Windows)">快速上手（Windows）</h2>
-        <p class="section-lead" data-zh="构建与运行都由仓库内的 Python 脚本驱动；脚本名以 scripts/ 目录为准。下面是可参照的入口命令。"
-                               data-en="Build and run are both driven by Python scripts in the repo; script names follow the scripts/ directory. The entry commands below are a reference.">构建与运行都由仓库内的 Python 脚本驱动；脚本名以 scripts/ 目录为准。下面是可参照的入口命令。</p>
+        <p class="section-lead" data-zh="构建与运行都由仓库内的脚本驱动（需要本机装有 zig 与 NASM）。下面是可参照的入口命令。"
+                               data-en="Build and run are driven by the repo's scripts (zig and NASM are required locally). The entry commands below are a reference.">构建与运行都由仓库内的脚本驱动（需要本机装有 zig 与 NASM）。下面是可参照的入口命令。</p>
 
         <div class="code-block">
-          <pre aria-label="构建与启动命令"><code># 1) 在仓库根目录，用 Python 脚本构建可引导镜像
-python scripts/build.py
+          <pre aria-label="构建与启动命令"><code># 1) 安装交叉编译工具链（zig + NASM）
+powershell -ExecutionPolicy Bypass -File tools\setup-toolchain.ps1
 
-# 2) 启动到 QEMU（串口自动化测试已内置）
-python scripts/run.py
+# 2) 构建用户态 TNCR 程序（tinysh / lua / 网络组件）
+python tools\build_users.py
 
-# 3) 镜像产物：tinyos.img（约 612 KB）</code></pre>
+# 3) 构建可引导镜像 tinyos.img（约 612 KB）
+powershell -ExecutionPolicy Bypass -File build.ps1
+
+# 4) 启动到 QEMU
+start.bat</code></pre>
         </div>
-        <p class="chart-note" data-zh="提示：构建需要本机装有 zig 与 NASM；全部测试由 QEMU 串口自动化驱动，27/27 通过，无需人工点击。"
-                           data-en="Note: the build needs zig and NASM installed locally; all tests run via QEMU serial automation, 27/27 passing, no manual clicks.">提示：构建需要本机装有 zig 与 NASM；全部测试由 QEMU 串口自动化驱动，27/27 通过，无需人工点击。</p>
+
+        <div class="callout" role="note">
+          <h3 data-zh="首次启动：安装向导" data-en="First boot: install wizard">首次启动：安装向导</h3>
+          <p data-zh="镜像首次启动会跑 5 步安装向导（disk / network / software / accounts / confirm）。第 4 步 accounts 需设置 root 密码（≥3 位，输入两遍）。登录后自动进入 tinysh；exit 退回内核 shell（uname / mem / ps / disk / net / help / lua）。"
+             data-en="On first boot the image runs a 5-step install wizard (disk / network / software / accounts / confirm). Step 4 (accounts) asks for the root password (>=3 chars, typed twice). After login you land in tinysh; `exit` drops back to the kernel shell (uname / mem / ps / disk / net / help / lua).">镜像首次启动会跑 5 步安装向导（disk / network / software / accounts / confirm）。第 4 步 accounts 需设置 root 密码（≥3 位，输入两遍）。登录后自动进入 tinysh；exit 退回内核 shell（uname / mem / ps / disk / net / help / lua）。</p>
+        </div>
+
+        <p class="chart-note" data-zh="提示：全部测试由 QEMU 串口自动化驱动，27/27 通过，无需人工点击。"
+                           data-en="Note: all tests run via QEMU serial automation, 27/27 passing, no manual clicks.">提示：全部测试由 QEMU 串口自动化驱动，27/27 通过，无需人工点击。</p>
       </div>
     </section>
 
@@ -308,7 +365,8 @@ python scripts/run.py
   <footer class="site-footer">
     <div class="wrap footer-inner">
       <p><strong>TinyOS Genesis v0.1</strong> — <span data-zh="从零手写的裸机 x86 操作系统" data-en="a from-scratch bare-metal x86 OS">从零手写的裸机 x86 操作系统</span></p>
-      <p class="footer-meta" data-zh="内核、引导器、用户程序全部自研 · 2026" data-en="kernel, bootloader and user programs all built in-house · 2026">内核、引导器、用户程序全部自研 · 2026</p>
+      <p class="footer-meta" data-zh="内核、引导器、用户程序全部自研 · MIT License · 2026" data-en="kernel, bootloader and user programs all built in-house · MIT License · 2026">内核、引导器、用户程序全部自研 · MIT License · 2026</p>
+      <p class="footer-links"><a href="index.html" data-zh="首页" data-en="Home">首页</a> · <a href="license.html" data-zh="开源协议" data-en="License">开源协议</a></p>
     </div>
   </footer>
 

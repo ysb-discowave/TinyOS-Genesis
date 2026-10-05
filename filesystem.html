@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="TinyOS Genesis v0.1 filesystem: the read-only compressed romfs, the writable persistent TinyFS on disk, MBR partition table, ATA multi-disk abstraction, and a full inventory of the 20 system files shipped in romfs." />
+  <title>TinyOS Genesis v0.1 · 文件系统 / Filesystem</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main" data-zh="跳到主内容" data-en="Skip to main content">跳到主内容</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="index.html" aria-label="TinyOS Genesis home">
+        <svg class="brand-logo" width="28" height="28" viewBox="0 0 32 32" role="img" aria-hidden="true">
+          <rect x="6" y="6" width="20" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>
+          <rect x="12" y="12" width="8" height="8" rx="1" fill="currentColor"/>
+          <g stroke="currentColor" stroke-width="2">
+            <line x1="16" y1="2" x2="16" y2="6"/><line x1="16" y1="26" x2="16" y2="30"/>
+            <line x1="2" y1="16" x2="6" y2="16"/><line x1="26" y1="16" x2="30" y2="16"/>
+            <line x1="6" y1="6" x2="9" y2="9"/><line x1="26" y1="6" x2="23" y2="9"/>
+            <line x1="6" y1="26" x2="9" y2="23"/><line x1="26" y1="26" x2="23" y2="23"/>
+          </g>
+        </svg>
+        <span class="brand-name">TinyOS&nbsp;Genesis</span>
+      </a>
+
+      <nav class="site-nav" aria-label="主导航">
+        <a href="index.html" data-zh="首页" data-en="Home">首页</a>
+        <a href="tinysh.html" data-zh="tinysh" data-en="tinysh">tinysh</a>
+        <a href="filesystem.html" aria-current="page" data-zh="文件系统" data-en="Filesystem">文件系统</a>
+        <a href="packages.html" data-zh="软件包" data-en="Packages">软件包</a>
+        <a href="network.html" data-zh="网络" data-en="Network">网络</a>
+        <a href="license.html" data-zh="协议" data-en="License">协议</a>
+      </nav>
+
+      <button id="lang-toggle" class="lang-toggle" type="button"
+              data-zh="EN" data-en="中文" aria-label="切换语言 / Switch language">EN</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- PAGE HEAD -->
+    <section class="page-head" aria-labelledby="page-title">
+      <div class="wrap">
+        <h1 id="page-title" data-zh="文件系统与系统文件用途" data-en="Filesystem &amp; system files">文件系统与系统文件用途</h1>
+        <p class="lede" data-zh="一个约 8&nbsp;MB 的裸机系统，为什么还要自己写文件系统？答案在分工：romfs 只读、随镜像走；TinyFS 可写、持久化到磁盘。下面按模块拆解两套 FS、分区表、多磁盘抽象，以及 romfs 里 20 个真实文件的用途。"
+                       data-en="For a bare-metal system of only ~8&nbsp;MB, why hand-write a filesystem at all? The answer is division of labour: romfs is read-only and travels with the image; TinyFS is writable and persists to disk. Below: both filesystems, the partition table, the multi-disk abstraction, and the purpose of all 20 real files shipped in romfs.">一个约 8&nbsp;MB 的裸机系统，为什么还要自己写文件系统？答案在分工：romfs 只读、随镜像走；TinyFS 可写、持久化到磁盘。下面按模块拆解两套 FS、分区表、多磁盘抽象，以及 romfs 里 20 个真实文件的用途。</p>
+
+        <nav class="section-toc" aria-label="本页区块导航">
+          <a href="#intro" data-zh="引言" data-en="Intro">引言</a>
+          <a href="#romfs" data-zh="romfs" data-en="romfs">romfs</a>
+          <a href="#tinyfs" data-zh="TinyFS" data-en="TinyFS">TinyFS</a>
+          <a href="#mbr" data-zh="分区表" data-en="Partition table">分区表</a>
+          <a href="#disk" data-zh="多磁盘" data-en="Multi-disk">多磁盘</a>
+          <a href="#files" data-zh="系统文件" data-en="System files">系统文件</a>
+          <a href="#api" data-zh="程序访问" data-en="Program access">程序访问</a>
+          <a href="#usage" data-zh="磁盘实测" data-en="Disk usage">磁盘实测</a>
+        </nav>
+      </div>
+    </section>
+
+    <!-- 1. INTRO -->
+    <section id="intro" class="section" aria-labelledby="intro-title">
+      <div class="wrap">
+        <h2 id="intro-title" data-zh="引言：两套文件系统，各管一摊" data-en="Intro: two filesystems, two jobs">引言：两套文件系统，各管一摊</h2>
+        <p class="section-lead" data-zh="8&nbsp;MB 的体量装不下一个通用文件系统（ext2/fat 都太重、还要驱动层）。Genesis 把需求劈成两半：稳定运行所需的、永远不变的代码与配置放进 romfs；用户会改、要活过重启的数据放进 TinyFS。两者都挂进同一个 VFS，对用户态看起来是同一棵树。"
+                              data-en="An 8&nbsp;MB footprint cannot carry a general-purpose filesystem (ext2/fat are too heavy and need a driver layer). Genesis splits the need in two: code and config that never change go into romfs; data the user mutates and must survive a reboot goes into TinyFS. Both mount into one VFS, so user space sees a single tree.">8&nbsp;MB 的体量装不下一个通用文件系统（ext2/fat 都太重、还要驱动层）。Genesis 把需求劈成两半：稳定运行所需的、永远不变的代码与配置放进 romfs；用户会改、要活过重启的数据放进 TinyFS。两者都挂进同一个 VFS，对用户态看起来是同一棵树。</p>
+
+        <ol class="arch" aria-label="两套文件系统分工示意">
+          <li class="arch-node">
+            <span class="arch-tag">romfs</span>
+            <span class="arch-detail" data-zh="只读 · 压缩 · 编译进内核镜像" data-en="read-only · compressed · linked into kernel image">只读 · 压缩 · 编译进内核镜像</span>
+          </li>
+          <li class="arch-arrow" aria-hidden="true">→</li>
+          <li class="arch-node">
+            <span class="arch-tag">VFS</span>
+            <span class="arch-detail" data-zh="统一挂载点 /" data-en="single mount point /">统一挂载点 /</span>
+          </li>
+          <li class="arch-arrow" aria-hidden="true">→</li>
+          <li class="arch-node">
+            <span class="arch-tag">TinyFS</span>
+            <span class="arch-detail" data-zh="可写 · 持久化 · 落在磁盘分区" data-en="writable · persistent · on disk partition">可写 · 持久化 · 落在磁盘分区</span>
+          </li>
+        </ol>
+
+        <ul class="matrix">
+          <li class="card">
+            <h3>romfs</h3>
+            <p data-zh="内核编译期由 tools/build_users.py 打包、压缩，启动时由内核解压挂载。不可写 —— 所有写请求走到这里会被 VFS 拒绝。" data-en="Packed and compressed at build time by tools/build_users.py, then decompressed and mounted by the kernel at boot. Not writable — any write reaching here is rejected by the VFS.">内核编译期由 tools/build_users.py 打包、压缩，启动时由内核解压挂载。不可写 —— 所有写请求走到这里会被 VFS 拒绝。</p>
+          </li>
+          <li class="card">
+            <h3>TinyFS</h3>
+            <p data-zh="自研、落在磁盘分区（基址由 MBR 决定）。首次启动自动格式化并写入内置文件，之后的用户改动都活在这里。" data-en="Hand-written, living in a disk partition (base address decided by the MBR). Auto-formats on first boot and writes built-in files; later user changes all live here.">自研、落在磁盘分区（基址由 MBR 决定）。首次启动自动格式化并写入内置文件，之后的用户改动都活在这里。</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 2. ROMFS -->
+    <section id="romfs" class="section" aria-labelledby="romfs-title">
+      <div class="wrap">
+        <h2 id="romfs-title" data-zh="romfs：只读、压缩、编译进内核" data-en="romfs: read-only, compressed, linked into the kernel">romfs：只读、压缩、编译进内核</h2>
+        <p class="section-lead" data-zh="romfs 是一条极简的串行记录流。内核启动时由 vfs_load_romfs 调 kernel/inflate.c 的 inflate_raw 解压，再挂上 VFS。它没有目录树结构 —— 目录只是名字里带斜杠的“伪文件”，由 VFS 在挂载时展开。"
+                              data-en="romfs is a minimal serial stream of records. At boot vfs_load_romfs calls inflate_raw from kernel/inflate.c to decompress it, then mounts it on the VFS. There is no directory tree — directories are just pseudo-files whose names contain slashes, expanded by the VFS at mount time.">romfs 是一条极简的串行记录流。内核启动时由 vfs_load_romfs 调 kernel/inflate.c 的 inflate_raw 解压，再挂上 VFS。它没有目录树结构 —— 目录只是名字里带斜杠的“伪文件”，由 VFS 在挂载时展开。</p>
+
+        <h3 data-zh="记录格式（每条文件一条）" data-en="Record format (one per file)">记录格式（每条文件一条）</h3>
+        <div class="code-block" role="img" aria-label="romfs 记录字节布局">
+          <pre aria-label="romfs record layout"><code>[u32 namelen]   name 的字节长度
+[name]        路径字符串，如 "/bin/tinysh.TNCR"
+[u8  flag]     0 = 原样存储；1 = zlib raw-deflate 压缩
+[u32 orig_len] 解压后长度（字节）
+[u32 stored_len] 实际存储长度（字节）
+[data]        文件内容（flag=1 时为已压缩数据）
+
+约定：namelen == 0 表示记录流结束（EOF 哨兵）。</code></pre>
+        </div>
+
+        <h3 data-zh="压缩方案" data-en="Compression scheme">压缩方案</h3>
+        <p data-zh="flag=1 时，内容用 zlib 的 raw-deflate 编码（Python 侧 compressobj(wbits=-15) 生成）。内核侧不依赖完整 zlib，而是自己实现 kernel/inflate.c 里的 inflate_raw 做流式解压，从而把解压器压进极小的内核镜像。" data-en="When flag=1, the content is zlib raw-deflate (produced host-side with Python compressobj(wbits=-15)). The kernel does not link a full zlib; instead it ships its own inflate_raw in kernel/inflate.c for streaming decompression, keeping the decompressor tiny.">flag=1 时，内容用 zlib 的 raw-deflate 编码（Python 侧 compressobj(wbits=-15) 生成）。内核侧不依赖完整 zlib，而是自己实现 kernel/inflate.c 里的 inflate_raw 做流式解压，从而把解压器压进极小的内核镜像。</p>
+
+        <div class="callout" role="note">
+          <h3 data-zh="两边必须同步改格式" data-en="The format must change on both sides">两边必须同步改格式</h3>
+          <p data-zh="打包在 tools/build_users.py，解包在内核 kernel/vfs.c。只要改了记录布局（例如多一个字段），这两个文件必须一起同步：打包端写出的字节顺序、长度字段语义，必须和内核解包端逐字节对应，否则启动期解压挂载会错位、文件系统“看不见”。" data-en="Packing lives in tools/build_users.py; unpacking lives in the kernel's kernel/vfs.c. Any change to the record layout (e.g. adding a field) must be made in both files together: the byte order and length fields written by the packer must match the kernel's unpacker exactly, or the boot-time decompress/mount misaligns and the filesystem silently “disappears”.">打包在 tools/build_users.py，解包在内核 kernel/vfs.c。只要改了记录布局（例如多一个字段），这两个文件必须一起同步：打包端写出的字节顺序、长度字段语义，必须和内核解包端逐字节对应，否则启动期解压挂载会错位、文件系统“看不见”。</p>
+        </div>
+
+        <h3 data-zh="实测体积" data-en="Measured size">实测体积</h3>
+        <p data-zh="压缩后 romfs 实测 56&nbsp;KB（上一代同类系统 336&nbsp;KB，约 6× 更小）。这 56&nbsp;KB 里塞着 20 个文件：从 4.6&nbsp;KB 的 tinysh 到 210&nbsp;KB 的 Lua 解释器都在内。" data-en="The compressed romfs measures 56&nbsp;KB in practice (the previous generation was 336&nbsp;KB — roughly 6× smaller). Those 56&nbsp;KB hold all 20 files, from the 4.6&nbsp;KB tinysh up to the 210&nbsp;KB Lua interpreter.">压缩后 romfs 实测 56&nbsp;KB（上一代同类系统 336&nbsp;KB，约 6× 更小）。这 56&nbsp;KB 里塞着 20 个文件：从 4.6&nbsp;KB 的 tinysh 到 210&nbsp;KB 的 Lua 解释器都在内。</p>
+      </div>
+    </section>
+
+    <!-- 3. TINYFS -->
+    <section id="tinyfs" class="section" aria-labelledby="tinyfs-title">
+      <div class="wrap">
+        <h2 id="tinyfs-title" data-zh="TinyFS：可写、持久化、在磁盘上" data-en="TinyFS: writable, persistent, on disk">TinyFS：可写、持久化、在磁盘上</h2>
+        <p class="section-lead" data-zh="TinyFS 是 Genesis 自研的文件系统，实现于 kernel/fs/。它不写死任何起始地址 —— 基址 LBA 2048 只是一个“分区表决定后才生效”的默认值。布局从基址起：bitmap 32 扇区 + table 32 扇区，数据从第 65 扇区开始。"
+                              data-en="TinyFS is Genesis's hand-written filesystem, implemented under kernel/fs/. It hard-codes nothing: the base LBA 2048 is only a default that takes effect after the partition table decides. From the base, the layout is: bitmap 32 sectors + table 32 sectors, with data starting at sector 65.">TinyFS 是 Genesis 自研的文件系统，实现于 kernel/fs/。它不写死任何起始地址 —— 基址 LBA 2048 只是一个“分区表决定后才生效”的默认值。布局从基址起：bitmap 32 扇区 + table 32 扇区，数据从第 65 扇区开始。</p>
+
+        <h3 data-zh="磁盘布局（从基址 LBA 2048 起）" data-en="Disk layout (from base LBA 2048)">磁盘布局（从基址 LBA 2048 起）</h3>
+        <div role="img" aria-label="TinyFS 磁盘布局：bitmap 32 扇区、table 32 扇区、data 从 65 扇区起"
+             style="display:flex; flex-direction:column; gap:10px; margin:8px 0 4px;">
+          <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:stretch;">
+            <div style="flex:0 0 18%; min-width:90px; border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:linear-gradient(160deg,#121a2b,#0d1422); display:flex; flex-direction:column; justify-content:center; gap:2px;">
+              <span style="font-weight:800; color:#fff; font-family:var(--mono); font-size:13px;">LBA 2048</span>
+              <span style="font-size:12px; color:var(--muted);" data-zh="分区基址" data-en="partition base">分区基址</span>
+            </div>
+            <div style="flex:0 0 32%; min-width:90px; border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:linear-gradient(160deg,#16203a,#0e1626); display:flex; flex-direction:column; justify-content:center; gap:2px;">
+              <span style="font-weight:800; color:var(--accent); font-family:var(--mono); font-size:13px;">bitmap</span>
+              <span style="font-size:12px; color:var(--muted); font-family:var(--mono);">32 sectors</span>
+            </div>
+            <div style="flex:0 0 32%; min-width:90px; border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:linear-gradient(160deg,#1a1f3e,#0e1626); display:flex; flex-direction:column; justify-content:center; gap:2px;">
+              <span style="font-weight:800; color:var(--accent-2); font-family:var(--mono); font-size:13px;">table</span>
+              <span style="font-size:12px; color:var(--muted); font-family:var(--mono);">32 sectors</span>
+            </div>
+            <div style="flex:1 1 auto; min-width:90px; border:1px solid rgba(126,231,135,.4); border-radius:10px; padding:10px 12px; background:rgba(126,231,135,.06); display:flex; flex-direction:column; justify-content:center; gap:2px;">
+              <span style="font-weight:800; color:var(--good); font-family:var(--mono); font-size:13px;" data-zh="data 起点" data-en="data start">data 起点</span>
+              <span style="font-size:12px; color:var(--muted); font-family:var(--mono);">sector 65</span>
+            </div>
+          </div>
+          <p style="color:var(--muted); font-size:13px; margin:0;" data-zh="所有偏移都相对分区基址，不是绝对扇区号；基址来自 MBR，见下节。" data-en="All offsets are relative to the partition base, not absolute sector numbers; the base comes from the MBR, next section.">所有偏移都相对分区基址，不是绝对扇区号；基址来自 MBR，见下节。</p>
+        </div>
+
+        <h3 data-zh="首次启动：自动格式化" data-en="First boot: auto-format">首次启动：自动格式化</h3>
+        <p data-zh="TinyFS 卷不存在时，内核会在首次启动自动格式化并写入内置文件（/etc 下的配置、安装标记等）。这意味着用户拿到的是“已经能用的盘”，无需手动 mkfs。"
+           data-en="When a TinyFS volume is absent, the kernel auto-formats it on first boot and writes the built-in files (/etc config, install marker, etc.). The user gets a ready-to-use disk with no manual mkfs.">TinyFS 卷不存在时，内核会在首次启动自动格式化并写入内置文件（/etc 下的配置、安装标记等）。这意味着用户拿到的是“已经能用的盘”，无需手动 mkfs。</p>
+
+        <h3 data-zh="用 MBR 定位分区基址" data-en="Locate the base via the MBR">用 MBR 定位分区基址</h3>
+        <p data-zh="挂载前必须调 mbr_lookup() 从分区表读出 TinyFS 分区的起始 LBA。漏掉这一步会回退到默认 LBA 2048：对于自定义分区的盘，重启后内核找错位置，表现为“认不出文件系统”并重新格式化 —— 用户数据凭空消失。这是 TinyFS 最容易踩的坑。"
+           data-en="Before mounting, mbr_lookup() must read the TinyFS partition's start LBA from the partition table. Skip it and the code falls back to the default LBA 2048; on a custom-partitioned disk the kernel then looks in the wrong place, “fails to recognise the filesystem” and reformats — the user's data vanishes. It is TinyFS's easiest footgun.">挂载前必须调 mbr_lookup() 从分区表读出 TinyFS 分区的起始 LBA。漏掉这一步会回退到默认 LBA 2048：对于自定义分区的盘，重启后内核找错位置，表现为“认不出文件系统”并重新格式化 —— 用户数据凭空消失。这是 TinyFS 最容易踩的坑。</p>
+
+        <h3 data-zh="tfs_set_limit()：防止格式化越界" data-en="tfs_set_limit(): stop format from overrunning">tfs_set_limit()：防止格式化越界</h3>
+        <p data-zh="tfs_set_limit() 显式限定 TinyFS 分区能占用的扇区数。设置上限后，格式化只会在划定范围内写 bitmap/table/data，不会越界吃掉同盘上别的分区（例如用户空间或别的系统）。"
+           data-en="tfs_set_limit() explicitly caps how many sectors the TinyFS partition may occupy. With the cap set, formatting only writes bitmap/table/data inside the drawn bounds and will not overrun into neighbouring partitions on the same disk (e.g. user space or another OS).">tfs_set_limit() 显式限定 TinyFS 分区能占用的扇区数。设置上限后，格式化只会在划定范围内写 bitmap/table/data，不会越界吃掉同盘上别的分区（例如用户空间或别的系统）。</p>
+      </div>
+    </section>
+
+    <!-- 4. MBR / PARTITION TABLE -->
+    <section id="mbr" class="section" aria-labelledby="mbr-title">
+      <div class="wrap">
+        <h2 id="mbr-title" data-zh="分区表：扇区 0 既是引导扇区，又是 MBR" data-en="Partition table: sector 0 is both boot sector and MBR">分区表：扇区 0 既是引导扇区，又是 MBR</h2>
+        <p class="section-lead" data-zh="Genesis 让引导扇区和标准 MBR 共用同一个扇区 0。引导代码与数据只有 446 字节预算（0x000..0x1BD），剩下的 0x1BE..0x1FD 是 4 条标准分区表项；末尾 0x1FE..0x1FF 是 0x55AA 引导签名。"
+                              data-en="Genesis makes the boot sector and a standard MBR share sector 0. The boot code and data get only a 446-byte budget (0x000..0x1BD); the remaining 0x1BE..0x1FD holds the four standard partition entries; the last 0x1FE..0x1FF is the 0x55AA boot signature.">Genesis 让引导扇区和标准 MBR 共用同一个扇区 0。引导代码与数据只有 446 字节预算（0x000..0x1BD），剩下的 0x1BE..0x1FD 是 4 条标准分区表项；末尾 0x1FE..0x1FF 是 0x55AA 引导签名。</p>
+
+        <div class="code-block" role="img" aria-label="MBR 扇区 0 布局">
+          <pre aria-label="MBR sector 0 layout"><code>sector 0 (512 bytes)
++----------------------------+ 0x000
+| boot code + data (≤ 446 B) |   ← 超出会令 nasm 因 TIMES 为负报错
++----------------------------+ 0x1BE
+| partition entry 0 (16 B)   |
+| partition entry 1 (16 B)   |
+| partition entry 2 (16 B)   |
+| partition entry 3 (16 B)   |
++----------------------------+ 0x1FE
+| 0x55 0xAA (boot signature) |
++----------------------------+ 0x200</code></pre>
+        </div>
+
+        <h3 data-zh="分区类型号" data-en="Partition type bytes">分区类型号</h3>
+        <ul class="matrix">
+          <li class="card">
+            <h3>0x7E</h3>
+            <p data-zh="内核分区，标记为活动（active）。引导器从这里加载内核。" data-en="Kernel partition, marked active. The bootloader loads the kernel from here.">内核分区，标记为活动（active）。引导器从这里加载内核。</p>
+          </li>
+          <li class="card">
+            <h3>0x7F</h3>
+            <p data-zh="TinyFS 分区。mbr_lookup() 按这个类型号找到它，从而拿到正确的起始 LBA。" data-en="TinyFS partition. mbr_lookup() finds it by this type byte, obtaining the correct start LBA.">TinyFS 分区。mbr_lookup() 按这个类型号找到它，从而拿到正确的起始 LBA。</p>
+          </li>
+        </ul>
+
+        <div class="callout" role="note">
+          <h3 data-zh="为什么不能写死 LBA" data-en="Why the LBA cannot be hard-coded">为什么不能写死 LBA</h3>
+          <p data-zh="基址来自分区表，不是常数。把 LBA 2048 写死进代码，遇到非默认分区布局的盘就会读错位置（见 TinyFS 一节）。正确做法是 mbr_lookup() 动态取出，再用 tfs_set_limit() 收住边界。"
+             data-en="The base comes from the partition table, not a constant. Hard-coding LBA 2048 into the code makes it read the wrong place on any non-default layout (see the TinyFS section). The correct path is to read it dynamically with mbr_lookup(), then bound it with tfs_set_limit().">基址来自分区表，不是常数。把 LBA 2048 写死进代码，遇到非默认分区布局的盘就会读错位置（见 TinyFS 一节）。正确做法是 mbr_lookup() 动态取出，再用 tfs_set_limit() 收住边界。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. MULTI-DISK -->
+    <section id="disk" class="section" aria-labelledby="disk-title">
+      <div class="wrap">
+        <h2 id="disk-title" data-zh="多磁盘：ATA 抽象层" data-en="Multi-disk: the ATA abstraction">多磁盘：ATA 抽象层</h2>
+        <p class="section-lead" data-zh="ATA 多磁盘抽象层（kernel/disk/）用一个注册表支持多块盘。每块盘是一个 disk_t；控制器驱动自己管寄存器与队列，因为读写回调收的是 void *drv 私有状态。"
+                              data-en="The ATA multi-disk abstraction (kernel/disk/) supports many disks through a registry. Each disk is a disk_t; the controller driver manages its own registers and queues because the read/write callbacks take a void *drv private state.">ATA 多磁盘抽象层（kernel/disk/）用一个注册表支持多块盘。每块盘是一个 disk_t；控制器驱动自己管寄存器与队列，因为读写回调收的是 void *drv 私有状态。</p>
+
+        <div class="code-block" role="img" aria-label="disk_t 与 disk_ops_t 结构">
+          <pre aria-label="disk_t / disk_ops_t structs"><code>typedef struct disk_t {
+  const char *name;     // 盘名，如 "ide0"
+  const char *model;    // 型号字符串
+  int         loc;      // 总线位置（控制器编号等）
+  u32         sectors;  // 总扇区数
+  int         is_boot;  // 是否启动盘
+  disk_ops_t  ops;      // { read, write } 函数指针
+} disk_t;
+
+typedef struct disk_ops_t {
+  // drv 是驱动私有状态，各控制器自己解释
+  int (*read) (void *drv, u32 lba, u32 count, void *buf);
+  int (*write)(void *drv, u32 lba, u32 count, const void *buf);
+} disk_ops_t;</code></pre>
+        </div>
+
+        <h3 data-zh="默认盘转发：存量调用者零改动" data-en="Default-disk forwarding: zero churn for callers">默认盘转发：存量调用者零改动</h3>
+        <p data-zh="抽象层保留一个“默认盘”指针。旧的、无参的 ata_read / ata_write 等 API 全部转发到默认盘 —— 这样早期直接调这些无参函数的代码不必改成“先查盘、再带 drv 调 ops”，存量调用者几乎不用动。"
+           data-en="The abstraction keeps a “default disk” pointer. The old parameter-less ata_read / ata_write etc. all forward to the default disk — so early code that calls these no-arg functions need not be rewritten to “look up a disk, then call ops with drv”; existing callers stay almost untouched.">抽象层保留一个“默认盘”指针。旧的、无参的 ata_read / ata_write 等 API 全部转发到默认盘 —— 这样早期直接调这些无参函数的代码不必改成“先查盘、再带 drv 调 ops”，存量调用者几乎不用动。</p>
+      </div>
+    </section>
+
+    <!-- 6. SYSTEM FILES -->
+    <section id="files" class="section" aria-labelledby="files-title">
+      <div class="wrap">
+        <h2 id="files-title" data-zh="系统文件用途总览（romfs 里 20 个文件）" data-en="System file inventory (20 files in romfs)">系统文件用途总览（romfs 里 20 个文件）</h2>
+        <p class="section-lead" data-zh="下面是 romfs 里真实存在的 20 个条目，逐个说明用途与大小（字节）。目录 / /bin /home /etc /sys /dev 由 VFS 从带斜杠的名字展开，不占 romfs 记录。"
+                              data-en="Below are the 20 real entries present in romfs, each annotated with its purpose and size (bytes). The directories / /bin /home /etc /sys /dev are expanded by the VFS from slash-bearing names and do not consume romfs records.">下面是 romfs 里真实存在的 20 个条目，逐个说明用途与大小（字节）。目录 / /bin /home /etc /sys /dev 由 VFS 从带斜杠的名字展开，不占 romfs 记录。</p>
+
+        <div style="overflow:auto; border:1px solid var(--line); border-radius:var(--radius);">
+          <table style="width:100%; border-collapse:collapse; font-size:14px; min-width:520px;">
+            <caption style="caption-side:top; text-align:left; padding:12px 14px; color:var(--muted); font-size:13px;" data-zh="romfs 内置文件清单（大小单位：字节）" data-en="romfs built-in file list (size in bytes)">romfs 内置文件清单（大小单位：字节）</caption>
+            <thead>
+              <tr style="background:rgba(255,255,255,.03); text-align:left;">
+                <th scope="col" style="padding:10px 14px; border-bottom:1px solid var(--line); color:#fff;" data-zh="路径" data-en="Path">路径</th>
+                <th scope="col" style="padding:10px 14px; border-bottom:1px solid var(--line); color:#fff;" data-zh="大小" data-en="Size">大小</th>
+                <th scope="col" style="padding:10px 14px; border-bottom:1px solid var(--line); color:#fff;" data-zh="用途" data-en="Purpose">用途</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/bin/tinysh.TNCR</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">46408</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="默认用户态 shell（TNCR 程序），登录后自动进入。" data-en="The default user-space shell (TNCR program), auto-launched after login.">默认用户态 shell（TNCR 程序），登录后自动进入。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/bin/LUA.TNCR</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">210584</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="Lua 5.4.7 解释器（TNCR 程序），可 REPL 或执行 .lua 脚本。" data-en="Lua 5.4.7 interpreter (TNCR program); REPL or run .lua scripts.">Lua 5.4.7 解释器（TNCR 程序），可 REPL 或执行 .lua 脚本。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/bin/SSHD.TNCR</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">114500</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="SSH 服务端（TNCR 程序），独立的用户态进程。" data-en="SSH server (TNCR program), a separate user-space process.">SSH 服务端（TNCR 程序），独立的用户态进程。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/bin/CC.TNCR</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">162680</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="C 编译器（TNCR 程序），独立的用户态进程。" data-en="C compiler (TNCR program), a separate user-space process.">C 编译器（TNCR 程序），独立的用户态进程。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/bin/EDIT.TNCR</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">45980</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="内置编辑器（TNCR 程序），独立的用户态进程。" data-en="Built-in editor (TNCR program), a separate user-space process.">内置编辑器（TNCR 程序），独立的用户态进程。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/bin/JVM.TNCR</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">5851</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="JVM 运行时（TNCR 程序），独立的用户态进程。" data-en="JVM runtime (TNCR program), a separate user-space process.">JVM 运行时（TNCR 程序），独立的用户态进程。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/bin/hello.TNCR</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">214</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="示例程序：最小可运行用例。" data-en="Example program: a minimal runnable case.">示例程序：最小可运行用例。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/bin/count.TNCR</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">877</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="示例程序：计数演示。" data-en="Example program: a counting demo.">示例程序：计数演示。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/bin/basic_demo.TNCR</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">500</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="示例：基础语法演示。" data-en="Example: basic-syntax demo.">示例：基础语法演示。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/bin/cpp_demo.TNCR</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">339</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="示例：C++ 风格语法演示。" data-en="Example: C++-style syntax demo.">示例：C++ 风格语法演示。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/bin/minic_demo.TNCR</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">500</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="示例：最小程序演示。" data-en="Example: minimal-program demo.">示例：最小程序演示。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/bin/net_demo.TNCR</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">467</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="示例：网络用法演示。" data-en="Example: networking demo.">示例：网络用法演示。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/bin/gui_demo.TNCR</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">470</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="示例：图形界面用法演示。" data-en="Example: graphical-interface demo.">示例：图形界面用法演示。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/bin/tiny_demo.TNCR</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">238</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="示例：迷你程序演示。" data-en="Example: tiny-program demo.">示例：迷你程序演示。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/DESKTOP.TNCR</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">34</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="桌面程序，VGA 文本桌面的入口。" data-en="Desktop program, the entry point for the VGA text desktop.">桌面程序，VGA 文本桌面的入口。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/home/readme.txt</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">804</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="系统说明文档（只读，随镜像走）。" data-en="System readme document (read-only, ships with the image).">系统说明文档（只读，随镜像走）。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/home/notes.txt</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">660</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="笔记文件（只读，随镜像走）。" data-en="Notes file (read-only, ships with the image).">笔记文件（只读，随镜像走）。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/home/hello.mc</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">1215</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="方块脚本示例（Minecraft 风格 / 方块世界脚本，非 C）。" data-en="Block-script example (a block-world / Minecraft-style script, not C).">方块脚本示例（Minecraft 风格 / 方块世界脚本，非 C）。</td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--line);">
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/etc/passwd</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">85</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="账号数据库：用户名与 UID 等（不含口令）。" data-en="Account database: usernames and UIDs etc. (no passwords).">账号数据库：用户名与 UID 等（不含口令）。</td>
+              </tr>
+              <tr>
+                <th scope="row" style="padding:9px 14px; text-align:left; font-family:var(--mono); color:var(--accent); font-weight:600; white-space:nowrap;">/etc/shadow</th>
+                <td style="padding:9px 14px; font-family:var(--mono); color:var(--muted);">224</td>
+                <td style="padding:9px 14px; color:var(--muted);" data-zh="口令哈希库：存放各账号的口令哈希（受保护）。" data-en="Password-hash store: holds each account's password hash (protected).">口令哈希库：存放各账号的口令哈希（受保护）。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 data-zh="目录（由 VFS 展开，不占 romfs 记录）" data-en="Directories (expanded by VFS, no romfs record)">目录（由 VFS 展开，不占 romfs 记录）</h3>
+        <p data-zh="根下的目录：/ /bin /home /etc /sys /dev。/sys 与 /dev 是内核在挂载时虚拟出来的（设备与系统信息），不是 romfs 里的真实条目。"
+           data-en="Top-level directories: / /bin /home /etc /sys /dev. /sys and /dev are virtualized by the kernel at mount time (devices and system info), not real romfs entries.">根下的目录：/ /bin /home /etc /sys /dev。/sys 与 /dev 是内核在挂载时虚拟出来的（设备与系统信息），不是 romfs 里的真实条目。</p>
+
+        <h3 data-zh="首次启动后写到磁盘的文件（TinyFS，可写）" data-en="Files written to disk after first boot (TinyFS, writable)">首次启动后写到磁盘的文件（TinyFS，可写）</h3>
+        <ul class="matrix">
+          <li class="card">
+            <h3>/etc/sshd.conf</h3>
+            <p data-zh="SSH 服务配置，由安装向导/SSHD 写入。" data-en="SSH service config, written by the installer / SSHD.">SSH 服务配置，由安装向导/SSHD 写入。</p>
+          </li>
+          <li class="card">
+            <h3>/etc/net.conf</h3>
+            <p data-zh="网络配置，记录 IP 等安装时设定的网络参数。" data-en="Network config, recording network parameters set at install time.">网络配置，记录 IP 等安装时设定的网络参数。</p>
+          </li>
+          <li class="card">
+            <h3>/etc/installed</h3>
+            <p><code>TinyOS Genesis v0.1 installed by the setup wizard</code></p>
+            <p data-zh="安装标记；内容即上方字符串，表明已跑过安装向导。" data-en="Install marker; its content is exactly the string above, proving the setup wizard ran.">安装标记；内容即上方字符串，表明已跑过安装向导。</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 7. USER PROGRAM ACCESS -->
+    <section id="api" class="section" aria-labelledby="api-title">
+      <div class="wrap">
+        <h2 id="api-title" data-zh="用户程序如何访问文件系统" data-en="How user programs access the filesystem">用户程序如何访问文件系统</h2>
+        <p class="section-lead" data-zh="TNCR 用户程序不能直接调内核的 vfs_* 函数。它们只能通过 tinyos_api_t 函数指针表访问内核能力 —— 这是一道架构边界：用户态拿到的是受控接口，内核维持对 VFS、内存、进程的唯一控制权。"
+                              data-en="TNCR user programs cannot call the kernel's vfs_* functions directly. They reach the kernel only through the tinyos_api_t function-pointer table — an architectural boundary: user space gets a controlled interface while the kernel keeps sole control of the VFS, memory and processes.">TNCR 用户程序不能直接调内核的 vfs_* 函数。它们只能通过 tinyos_api_t 函数指针表访问内核能力 —— 这是一道架构边界：用户态拿到的是受控接口，内核维持对 VFS、内存、进程的唯一控制权。</p>
+
+        <h3 data-zh="Genesis v0.1 在表末尾追加的扩展字段" data-en="Genesis v0.1 fields appended at the table's end">Genesis v0.1 在表末尾追加的扩展字段</h3>
+        <p data-zh="下表字段都追加在 tinyos_api_t 的末尾。因为只是“往后加”，磁盘上已有的旧 TNCR 程序在调用时仍然按老布局对得上前面的字段，新字段对它不可见 —— 所以旧程序不会被破坏（向后兼容）。"
+           data-en="All fields below are appended to the end of tinyos_api_t. Because they are only “added at the tail”, old TNCR programs already on disk still line up with the earlier fields by their old layout, and the new fields are simply invisible to them — so old programs are not broken (backward compatible).">下表字段都追加在 tinyos_api_t 的末尾。因为只是“往后加”，磁盘上已有的旧 TNCR 程序在调用时仍然按老布局对得上前面的字段，新字段对它不可见 —— 所以旧程序不会被破坏（向后兼容）。</p>
+
+        <div class="code-block" role="img" aria-label="Genesis v0.1 追加的 API 字段">
+          <pre aria-label="appended API fields"><code>// appended at the END of tinyos_api_t (Genesis v0.1)
+mkdir          // 建目录
+rm_file        // 删文件
+fs_list        // 列目录
+stat           // 取文件信息
+set_cwd        // 设当前工作目录
+proc_list_all  // 列出所有进程
+proc_kill      // 终止进程
+dev_list_all   // 列出所有设备
+dev_read       // 读设备寄存器
+dev_write      // 写设备寄存器
+sysinfo        // 系统信息
+date           // 日期
+version        // 版本</code></pre>
+        </div>
+
+        <h3 data-zh="绑定方式：静态初始化器" data-en="Binding: static initializer">绑定方式：静态初始化器</h3>
+        <p data-zh="这些字段由 kernel/genesis_api.c 实现，并在 kernel/api.c 的 g_api 静态初始化器里完成绑定。绑定发生在编译期，不依赖运行期初始化顺序 —— 即便别的模块还没跑起来，函数指针表已经就绪。"
+           data-en="These fields are implemented in kernel/genesis_api.c and bound inside the g_api static initializer in kernel/api.c. The binding happens at compile time and does not depend on runtime init order — the function-pointer table is ready even before other modules have run.">这些字段由 kernel/genesis_api.c 实现，并在 kernel/api.c 的 g_api 静态初始化器里完成绑定。绑定发生在编译期，不依赖运行期初始化顺序 —— 即便别的模块还没跑起来，函数指针表已经就绪。</p>
+
+        <div class="callout" role="note">
+          <h3 data-zh="架构含义：为什么不能直接调 vfs_*" data-en="Architectural meaning: why no direct vfs_*">架构含义：为什么不能直接调 vfs_*</h3>
+          <p data-zh="vfs_* 是内核私有符号，用户态既看不到也没有调用特权。所有访问都经 tinyos_api_t 这一道“安检门”，内核可以校验路径、权限与配额，也方便将来替换底层实现而不影响用户程序。"
+             data-en="vfs_* are kernel-private symbols: user space neither sees them nor has the privilege to call them. Every access goes through the tinyos_api_t “checkpoint”, where the kernel can validate path, permission and quota — and can later swap the underlying implementation without touching user programs.">vfs_* 是内核私有符号，用户态既看不到也没有调用特权。所有访问都经 tinyos_api_t 这一道“安检门”，内核可以校验路径、权限与配额，也方便将来替换底层实现而不影响用户程序。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. DISK USAGE -->
+    <section id="usage" class="section" aria-labelledby="usage-title">
+      <div class="wrap">
+        <h2 id="usage-title" data-zh="磁盘占用实测（来自引导日志）" data-en="Measured disk usage (from the boot log)">磁盘占用实测（来自引导日志）</h2>
+        <p class="section-lead" data-zh="下面是真实引导日志里 TinyFS 挂载时打印的一行，可直接核对上面对布局的描述。"
+                              data-en="Below is a real line printed by TinyFS at mount time during boot; it directly confirms the layout described above.">下面是真实引导日志里 TinyFS 挂载时打印的一行，可直接核对上面对布局的描述。</p>
+
+        <div class="term" role="img" aria-label="TinyFS 引导日志">
+          <div class="term-bar" aria-hidden="true">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="term-title">boot log — tfs mount</span>
+          </div>
+          <pre class="term-body" aria-label="引导日志输出">[tfs] layout: base LBA 2048, total 129024 bitmap 32 table 32 data start 65</pre>
+        </div>
+
+        <ul class="matrix">
+          <li class="card">
+            <h3>total 129024</h3>
+            <p data-zh="TinyFS 分区总扇区数（约 63&nbsp;MB @ 512B/扇区）。" data-en="Total sectors in the TinyFS partition (~63&nbsp;MB at 512B/sector).">TinyFS 分区总扇区数（约 63&nbsp;MB @ 512B/扇区）。</p>
+          </li>
+          <li class="card">
+            <h3>bitmap 32 / table 32</h3>
+            <p data-zh="位图与索引表各占 32 扇区，排在分区基址之后。" data-en="Bitmap and index table each take 32 sectors, right after the partition base.">位图与索引表各占 32 扇区，排在分区基址之后。</p>
+          </li>
+          <li class="card">
+            <h3>data start 65</h3>
+            <p data-zh="数据区起点扇区 = 基址 + 32 + 32 + 1（扇区从 0 计），与上节布局图一致。" data-en="Data area start sector = base + 32 + 32 + 1 (sectors are 0-indexed), matching the layout diagram above.">数据区起点扇区 = 基址 + 32 + 32 + 1（扇区从 0 计），与上节布局图一致。</p>
+          </li>
+        </ul>
+
+        <p class="chart-note" data-zh="注意：日志里的 2048 来自 MBR 分区表，不是写死常数；若分区布局不同，这个数字会变。"
+                           data-en="Note: the 2048 in the log comes from the MBR partition table, not a hard-coded constant; on a different layout this number changes.">注意：日志里的 2048 来自 MBR 分区表，不是写死常数；若分区布局不同，这个数字会变。</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <p><strong>TinyOS Genesis v0.1</strong> — <span data-zh="从零手写的裸机 x86 操作系统" data-en="a from-scratch bare-metal x86 OS">从零手写的裸机 x86 操作系统</span></p>
+      <p class="footer-meta" data-zh="内核、引导器、用户程序全部自研 · MIT License · 2026" data-en="kernel, bootloader and user programs all built in-house · MIT License · 2026">内核、引导器、用户程序全部自研 · MIT License · 2026</p>
+      <p class="footer-links"><a href="index.html" data-zh="首页" data-en="Home">首页</a> · <a href="license.html" data-zh="开源协议" data-en="License">开源协议</a></p>
+    </div>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

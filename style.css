@@ -76,9 +76,13 @@ a:hover { text-decoration: underline; }
 .brand-logo { color: var(--accent); flex: none; }
 .brand-name { letter-spacing: .3px; }
 
-.site-nav { display: flex; gap: 18px; margin-left: auto; flex-wrap: wrap; }
-.site-nav a { color: var(--muted); font-size: 14px; padding: 6px 2px; }
-.site-nav a:hover { color: var(--text); text-decoration: none; }
+.site-nav { display: flex; gap: 4px 14px; margin-left: auto; flex-wrap: wrap; }
+.site-nav a { color: var(--muted); font-size: 14px; padding: 6px 10px; border-radius: 999px; white-space: nowrap; }
+.site-nav a:hover { color: var(--text); text-decoration: none; background: rgba(255,255,255,.04); }
+.site-nav a[aria-current="page"] {
+  color: var(--text); background: rgba(77,208,225,.12);
+  border: 1px solid rgba(77,208,225,.35);
+}
 
 .lang-toggle {
   margin-left: 6px;
@@ -270,7 +274,8 @@ a:hover { text-decoration: underline; }
   .stack  { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
-  .site-nav { display: none; }
+  .header-inner { flex-wrap: wrap; height: auto; padding-top: 10px; padding-bottom: 10px; }
+  .site-nav { width: 100%; margin-left: 0; }
   .matrix { grid-template-columns: 1fr; }
   .roadmap { grid-template-columns: 1fr; }
   .chart-row { grid-template-columns: 1fr; }
@@ -285,3 +290,41 @@ a:hover { text-decoration: underline; }
   .art-cursor { animation: none; }
   * { transition: none !important; }
 }
+
+/* ---------- In-page section TOC (index hub) ---------- */
+.section-toc {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  padding: 14px 0 4px; margin: 0;
+}
+.section-toc a {
+  font-size: 13px; color: var(--muted);
+  padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px;
+}
+.section-toc a:hover { color: var(--accent); border-color: var(--accent); text-decoration: none; }
+
+/* ---------- Card link (product intro hub) ---------- */
+.card-link { display: inline-block; margin-top: 6px; color: var(--accent); font-weight: 700; }
+.card-link:hover { text-decoration: none; color: var(--accent-2); }
+
+/* ---------- Sub-page head + placeholder ---------- */
+.page-head { padding: 52px 0 6px; }
+.page-head h1 {
+  font-size: clamp(28px, 5vw, 44px); margin: 0 0 10px; letter-spacing: -.4px;
+  background: linear-gradient(90deg, #fff 0%, var(--accent) 60%, var(--accent-2) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.page-head .lede { color: var(--muted); max-width: 64ch; margin: 0; }
+
+.placeholder {
+  margin: 10px 0 0; padding: 48px 24px; text-align: center;
+  border: 1px dashed var(--line); border-radius: var(--radius);
+  background: rgba(255,255,255,.02);
+}
+.placeholder-icon { color: var(--accent); margin-bottom: 12px; }
+.placeholder h2 { font-size: 22px; margin: 0 0 8px; color: #fff; }
+.placeholder p { color: var(--muted); max-width: 56ch; margin: 0 auto; }
+
+.footer-links { margin: 8px 0 0; font-size: 13px; }
+.footer-links a { color: var(--muted); }
+.footer-links a:hover { color: var(--accent); }
