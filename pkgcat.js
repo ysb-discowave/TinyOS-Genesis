@@ -127,6 +127,83 @@
     }
   ];
 
+  /* PKGREPO:BEGIN —— 由 tools/sync_site_facts.py 从 packages/repo/ 自动生成，勿手改。
+     这份数据是"仓库里真实存在、pkg 真能装的包"：名字、字节数、sha256 全部取自
+     真实产物文件。上面 PKGS 里手写的条目提供更详细的逐文件说明与深挖内容。 */
+  var PKGS_REPO = [
+        { id: 'CC', state: 'ready', size: 162680,
+          sha: '2cd651fb19122096d1c79a93bd7c131e8b2a143dbac742b8f7f18b8e8ad8f401',
+          descZh: 'C 编译器/工具链前端（tncr 交叉编译）',
+          descEn: 'C 编译器/工具链前端（tncr 交叉编译） (162680 bytes, sha256 2cd651fb1912...)' },
+        { id: 'DESKTOP', state: 'ready', size: 34,
+          sha: '02b93608bb92b3c652b45a734de43435c726419faa6f7454bd8ed14714f375da',
+          descZh: '图形文本桌面启动器',
+          descEn: '图形文本桌面启动器 (34 bytes, sha256 02b93608bb92...)' },
+        { id: 'EDIT', state: 'ready', size: 45980,
+          sha: '0d00374174c799423b56f59e8f6646040a37fe788c96b358ea41677b58ecf37c',
+          descZh: '文本编辑器',
+          descEn: '文本编辑器 (45980 bytes, sha256 0d00374174c7...)' },
+        { id: 'JVM', state: 'ready', size: 5851,
+          sha: '152792856b7d854182b794eac2f2bc8fb667e90c1c0d2b7d806470dd926dcd17',
+          descZh: 'JVM 运行时',
+          descEn: 'JVM 运行时 (5851 bytes, sha256 152792856b7d...)' },
+        { id: 'LUA', state: 'ready', size: 210584,
+          sha: '8294b5a55b4ab7bcd72a7e9aa0198888ff3f9d8eb9ee28bcd026e7a899a0fab1',
+          descZh: 'Lua 5.4.7 解释器（REPL 交互 + lua /home/x.lua 脚本模式）',
+          descEn: 'Lua 5.4.7 解释器（REPL 交互 + lua /home/x.lua 脚本模式） (210584 bytes, sha256 8294b5a55b4a...)' },
+        { id: 'SSHD', state: 'ready', size: 114500,
+          sha: '2507b0deaf22551b65eb85e276ba30aab949974430d6a876d64549e95eac8d02',
+          descZh: 'SSH 服务端',
+          descEn: 'SSH 服务端 (114500 bytes, sha256 2507b0deaf22...)' },
+        { id: 'basic_demo', state: 'ready', size: 204,
+          sha: 'b9e6faf53975ca7b7fad32d0b51471c31c22216e56cc8fff96e2d0601dfa4193',
+          descZh: 'TinyBASIC 解释器运行的循环示例',
+          descEn: 'TinyBASIC 解释器运行的循环示例 (204 bytes, sha256 b9e6faf53975...)' },
+        { id: 'count', state: 'ready', size: 877,
+          sha: '347c41ce0a4f48c5f28a4bbe3bab3788c87f800076ed19b0d8129c8859e5e8ac',
+          descZh: '循环与计数器，演示 C 的基本控制流与终端输出',
+          descEn: '循环与计数器，演示 C 的基本控制流与终端输出 (877 bytes, sha256 347c41ce0a4f...)' },
+        { id: 'cpp_demo', state: 'ready', size: 339,
+          sha: 'b3c76dd35c1c9abe1178226b24368f2883cf1f5ef97b4889249a0f306a5680d8',
+          descZh: '最小化 C++ 程序，验证 C++ 工具链可用性',
+          descEn: '最小化 C++ 程序，验证 C++ 工具链可用性 (339 bytes, sha256 b3c76dd35c1c...)' },
+        { id: 'gui_demo', state: 'ready', size: 470,
+          sha: 'e553e1be79b1da419fe2f0ccd784230dd534157a5ff66aa6c7739372ed48c281',
+          descZh: '桌面 GUI 演示（--gui），展示窗口与图形输出',
+          descEn: '桌面 GUI 演示（--gui），展示窗口与图形输出 (470 bytes, sha256 e553e1be79b1...)' },
+        { id: 'hello', state: 'ready', size: 214,
+          sha: '050668ab67b7743b5e50372f07e95be433bf14234abe52267fbf19170d5ba492',
+          descZh: '最小化 C 程序，验证 C 工具链与 TNCR 运行时',
+          descEn: '最小化 C 程序，验证 C 工具链与 TNCR 运行时 (214 bytes, sha256 050668ab67b7...)' },
+        { id: 'minic_demo', state: 'ready', size: 500,
+          sha: 'ca92e2c0b062ee0605499b8e058db8aeaa62e4c1e3e84d6ed21adacf6ecf6aae',
+          descZh: 'MiniC 编译器示例（calc）',
+          descEn: 'MiniC 编译器示例（calc） (500 bytes, sha256 ca92e2c0b062...)' },
+        { id: 'net_demo', state: 'ready', size: 467,
+          sha: '3d41ba3758a1539440b8de1e27a5c22ac91803fabf1898a04521f0090c5f6e16',
+          descZh: '网络栈演示，使用 ARP/IPv4/TCP',
+          descEn: '网络栈演示，使用 ARP/IPv4/TCP (467 bytes, sha256 3d41ba3758a1...)' },
+        { id: 'tiny_demo', state: 'ready', size: 238,
+          sha: 'dfdefb943aa31c6d66b415848e7cc1c7b3a4f4c9a069414de9e88130c0cdfdf3',
+          descZh: 'TinyLang 源程序示例，验证 TinyLang 工具链',
+          descEn: 'TinyLang 源程序示例，验证 TinyLang 工具链 (238 bytes, sha256 dfdefb943aa3...)' },
+        { id: 'tinysh', state: 'ready', size: 179104,
+          sha: '4c317df355a489aeea5d6f26447f0a0472c67afc7c83b2f4fa4c8229f567f2bc',
+          descZh: 'TinyOS Genesis 默认 Shell（登录后自动进入，22 条命令 + pack/run + 三级命令查找链）',
+          descEn: 'TinyOS Genesis 默认 Shell（登录后自动进入，22 条命令 + pack/run + 三级命令查找链） (179104 bytes, sha256 4c317df355a4...)' },
+      ];
+  /* PKGREPO:END */
+
+  /* 合并成最终列表：仓库里的真实包全部出现；同名则以手写条目为准（信息更全）。
+     只有在仓库里不存在、又确实是规划中/说明包的条目才会单独保留。 */
+  var ALL_PKGS = (function () {
+    var out = PKGS.slice();
+    var have = {};
+    out.forEach(function (p) { have[p.id] = true; });
+    PKGS_REPO.forEach(function (p) { if (!have[p.id]) out.push(p); });
+    return out;
+  })();
+
   var STATE_LABEL = {
     ready:  { zh: '✅ 可安装', en: '✅ installable' },
     index:  { zh: '📘 说明包', en: '📘 index only' },
@@ -157,7 +234,7 @@
   function renderList() {
     var L = lang();
     var html = '<ul class="pkg-grid">';
-    PKGS.forEach(function (p) {
+    ALL_PKGS.forEach(function (p) {
       var st = STATE_LABEL[p.state];
       html += '<li class="pkg-item">';
       html += '  <button type="button" class="pkg-card pkg-' + p.state + '"';
@@ -260,7 +337,7 @@
 
   function select(id, forceOpen) {
     var p = null;
-    for (var i = 0; i < PKGS.length; i++) if (PKGS[i].id === id) p = PKGS[i];
+    for (var i = 0; i < ALL_PKGS.length; i++) if (ALL_PKGS[i].id === id) p = ALL_PKGS[i];
     if (!p) return;
 
     var detail = document.getElementById('pkg-detail');

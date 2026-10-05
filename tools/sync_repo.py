@@ -90,6 +90,32 @@ def verify():
             bad += 1
     return ok, bad
 
+def sync_pkg_dir(name, digest, size):
+    """把产物同步进按包分的源码目录（packages/<name>/），避免它变成空壳。
+
+    只有当 packages/<name>/ 确实存在时才做 —— tncr / web-admin-panel / demos
+    这类要么仍在规划中、要么是"说明包"（本就没有单一产物），不该被硬塞一个文件。
+    返回 True 表示确实同步了。
+    """
+    pkgdir = os.path.join(ROOT, "packages", name)
+    if not os.path.isdir(pkgdir):
+        return False
+    src = os.path.join(REPO, name + ".tncr")
+    if not os.path.isfile(src):
+        return False
+    shutil.copyfile(src, os.path.join(pkgdir, name + ".TNCR"))
+    # 该目录自己的 manifest 也要跟上真实 sha256 与产物大小写
+    mp = os.path.join(pkgdir, name + ".manifest")
+    if os.path.isfile(mp):
+        txt = open(mp, encoding="utf-8").read()
+        new = re.sub(r'(?m)^sha256:\s*[0-9a-fA-F]{64}\s*$', 'sha256: ' + digest, txt)
+        if new == txt:
+            new = re.sub(r'(?m)^(min_compiler:.*)$', r'\1\nsha256: ' + digest, txt, count=1)
+        # manifest 里写的是 tinysh.tncr，实际产物是大写 .TNCR
+        new = new.replace('output: /bin/%s.tncr' % name, 'output: /bin/%s.TNCR' % name)
+        open(mp, "w", encoding="utf-8").write(new)
+    return True
+
 def main():
     check_only = "--check" in sys.argv
     if not os.path.isdir(OUT):
@@ -103,6 +129,7 @@ def main():
         return 0 if bad == 0 else 1
 
     print("syncing from:", OUT)
+    npkgdir = 0
     for name in PUBLISH:
         src = os.path.join(OUT, name + ".TNCR")
         if not os.path.isfile(src):
@@ -113,7 +140,13 @@ def main():
         digest = sha256_file(dst)
         size = os.path.getsize(dst)
         patch_manifest(os.path.join(REPO, name + ".manifest"), name, digest, size)
-        print("  %-12s %8d bytes  sha256=%s..." % (name, size, digest[:16]))
+        extra = ""
+        if sync_pkg_dir(name, digest, size):
+            extra = "  + packages/%s/%s.TNCR" % (name, name)
+            npkgdir += 1
+        print("  %-12s %8d bytes  sha256=%s...%s" % (name, size, digest[:16], extra))
+    if npkgdir:
+        print("synced %d package source dir(s) too (no longer empty shells)" % npkgdir)
 
     # 重生成 INDEX.json
     pkgs = []

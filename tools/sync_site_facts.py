@@ -94,6 +94,51 @@ def inject_pkgtable():
     open(p, "w", encoding="utf-8").write(s)
     return 1
 
+def gen_pkgrepo_js():
+    """生成 pkgcat.js 里的真实包数组（取自 packages/repo 的实际文件）。"""
+    import json
+    rows = real_pkg_list()
+    # 从各包 manifest 取描述
+    desc = {}
+    for name, size, sha in rows:
+        mp = os.path.join(ROOT, "packages", "repo", name + ".manifest")
+        d = ""
+        if os.path.isfile(mp):
+            t = open(mp, encoding="utf-8").read()
+            m = re.search(r'(?m)^description:\s*(.+)$', t)
+            if m: d = m.group(1).strip()
+        if not d:
+            d = "%s 程序（由 tools/build_users.py 构建）" % name
+        desc[name] = d
+    out = ["["]
+    for name, size, sha in rows:
+        d = desc[name].replace("\\", "\\\\").replace("'", "\\'")
+        out.append("    { id: '%s', state: 'ready', size: %d," % (name, size))
+        out.append("      sha: '%s'," % sha)
+        out.append("      descZh: '%s'," % d)
+        out.append("      descEn: '%s (%d bytes, sha256 %s...)' }," % (d, size, sha[:12]))
+    out.append("  ]")
+    return "\n    ".join(out)
+
+def inject_pkgrepo():
+    """把真实包数组写进 pkgcat.js 的 PKGREPO 标记之间。"""
+    p = os.path.join(ROOT, "pkgcat.js")
+    if not os.path.isfile(p):
+        return 0
+    s = open(p, encoding="utf-8").read()
+    BEG, END = "/* PKGREPO:BEGIN", "/* PKGREPO:END"
+    if BEG not in s or END not in s:
+        print("  pkgcat.js: PKGREPO markers not found, skipped")
+        return 0
+    i = s.index(BEG); j = s.index(END)
+    block = s[i:j]
+    head_end = block.index("*/") + 2
+    head = block[:head_end]
+    new = head + "\n  var PKGS_REPO = " + gen_pkgrepo_js() + ";\n  "
+    s = s[:i] + new + s[j:]
+    open(p, "w", encoding="utf-8").write(s)
+    return 1
+
 print("real packages in repo: %d" % NPKG)
 
 CMD_LIST = " ".join(NAMES)
@@ -176,3 +221,5 @@ check_only = "--check" in sys.argv
 if not check_only:
     if inject_pkgtable():
         print("  packages.html   PKGTABLE regenerated from packages/repo")
+    if inject_pkgrepo():
+        print("  pkgcat.js       PKGREPO array regenerated from packages/repo")
