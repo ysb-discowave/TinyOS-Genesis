@@ -45,12 +45,14 @@
     <section class="page-head" aria-labelledby="page-title">
       <div class="wrap">
         <h1 id="page-title" data-zh="软件包管理器：pkg 命令已实现" data-en="Package manager: the pkg command is implemented">软件包管理器：pkg 命令已实现</h1>
-        <p class="lede" data-zh="v0.1 的 pkg 命令刚实现完：7 个子命令、带 SHA256 校验，从本地源目录安装。下面把「已实现」与「未实现」分得清清楚楚 —— 远程下载、依赖解析仍属未实现。本页如实标注每一条状态。"
-                       data-en="The pkg command for v0.1 is freshly implemented: 7 subcommands with SHA256 verification, installing from a local source dir. Below we draw a hard line between “done” and “not yet” — remote download and dependency resolution remain unimplemented. Every status on this page is labelled honestly.">v0.1 的 pkg 命令刚实现完：7 个子命令、带 SHA256 校验，从本地源目录安装。下面把「已实现」与「未实现」分得清清楚楚 —— 远程下载、依赖解析仍属未实现。本页如实标注每一条状态。</p>
+        <p class="lede" data-zh="v0.1 的 pkg 命令已实现：7 个子命令、带 SHA256 校验，支持三种源 —— 本地源目录、FTP、以及经 Cloudflare Worker 中转的 HTTP 镜像。单文件 .tncr 与多文件 .pack 都能装。下面把「已实现」与「未实现」分得清清楚楚 —— 依赖解析仍属未实现。本页如实标注每一条状态。"
+                       data-en="The pkg command for v0.1 is implemented: 7 subcommands with SHA256 verification, over three sources — a local source dir, FTP, and an HTTP mirror relayed by a Cloudflare Worker. Both single-file .tncr and multi-file .pack packages install. Below we draw a hard line between “done” and “not yet” — dependency resolution remains unimplemented. Every status on this page is labelled honestly.">v0.1 的 pkg 命令已实现：7 个子命令、带 SHA256 校验，支持三种源 —— 本地源目录、FTP、以及经 Cloudflare Worker 中转的 HTTP 镜像。单文件 .tncr 与多文件 .pack 都能装。下面把「已实现」与「未实现」分得清清楚楚 —— 依赖解析仍属未实现。本页如实标注每一条状态。</p>
 
         <nav class="section-toc" aria-label="本页区块导航">
           <a href="#status" data-zh="状态" data-en="Status">状态</a>
           <a href="#quickstart" data-zh="快速上手" data-en="Quick start">快速上手</a>
+          <a href="#network" data-zh="联网下载" data-en="Network download">联网下载</a>
+          <a href="#pack" data-zh=".pack 多文件包" data-en=".pack multi-file">.pack 多文件包</a>
           <a href="#reference" data-zh="子命令参考" data-en="Subcommand reference">子命令参考</a>
           <a href="#sha256" data-zh="SHA256 校验" data-en="SHA256 verification">SHA256 校验</a>
           <a href="#source-dir" data-zh="本地源目录" data-en="Local source dir">本地源目录</a>
@@ -67,9 +69,11 @@
         <h2 id="status-title" data-zh="状态横幅：✅ pkg 已实现（v0.1）" data-en="Status banner: ✅ pkg is implemented (v0.1)">状态横幅：✅ pkg 已实现（v0.1）</h2>
 
         <div class="callout" role="note" style="border-left-color: var(--good); background: rgba(126,231,135,.08);">
-          <h3 data-zh="✅ v0.1 已实现 pkg 命令" data-en="✅ v0.1 has implemented the pkg command">✅ v0.1 已实现 pkg 命令</h3>
-          <p data-zh="已在 src/kernel/shell.c 中实现（新增约 347 行），编译通过、QEMU 实测可用。提供 7 个子命令：help / list / info / verify / install / remove / source，安装与校验均复用内核的 SHA256。注意：install 走本地源目录，不是网络下载 —— 远程 HTTP/HTTPS 下载仍未实现（见「边界与未实现」）。"
-             data-en="Implemented in src/kernel/shell.c (~347 new lines); compiles and is verified working under QEMU. Provides 7 subcommands: help / list / info / verify / install / remove / source, with install and verify both reusing the kernel's SHA256. Note: install reads a local source dir, not the network — remote HTTP/HTTPS download is still unimplemented (see “Boundaries &amp; unimplemented”).">已在 src/kernel/shell.c 中实现（新增约 347 行），编译通过、QEMU 实测可用。提供 7 个子命令：help / list / info / verify / install / remove / source，安装与校验均复用内核的 SHA256。注意：install 走本地源目录，不是网络下载 —— 远程 HTTP/HTTPS 下载仍未实现（见「边界与未实现」）。</p>
+          <h3 data-zh="✅ v0.1 已实现 pkg 命令（用户态）" data-en="✅ v0.1 implements pkg in user space">✅ v0.1 已实现 pkg 命令（用户态）</h3>
+          <p data-zh="pkg 是用户态 TNCR 程序的一部分，实现在 tools/tinysh/src/tinysh.c（随 tinysh 一起编译成 tinysh.TNCR），不是内核内建 —— 它需要 shell、配置解析和大量文件读写，这些都不该放进内核。内核只暴露 sha256_file 这一个原语。提供 7 个子命令：help / list / info / verify / install / remove / source。安装源有三种，按顺序回退：① 本地源目录（sourcedir）② FTP ③ HTTP 镜像。SHA256 校验对下载与本地包同样生效。"
+             data-en="pkg is part of the user-space TNCR program, implemented in tools/tinysh/src/tinysh.c and compiled into tinysh.TNCR — not a kernel builtin, since it needs a shell, config parsing and heavy file I/O that do not belong in the kernel. The kernel exposes exactly one primitive: sha256_file. Seven subcommands: help / list / info / verify / install / remove / source. Three sources are tried in order: ① local source dir (sourcedir) ② FTP ③ HTTP mirror. SHA256 verification applies to downloaded and local packages alike.">pkg 是用户态 TNCR 程序的一部分，实现在 tools/tinysh/src/tinysh.c（随 tinysh 一起编译成 tinysh.TNCR），不是内核内建 —— 它需要 shell、配置解析和大量文件读写，这些都不该放进内核。内核只暴露 sha256_file 这一个原语。提供 7 个子命令：help / list / info / verify / install / remove / source。安装源有三种，按顺序回退：① 本地源目录（sourcedir）② FTP ③ HTTP 镜像。SHA256 校验对下载与本地包同样生效。</p>
+          <p data-zh="联网下载已跑通：默认 HTTP 源是一个 Cloudflare Worker（tinyos-pkg-down.ysbdwz.dpdns.org:80），它在边缘终结 TLS、再用 HTTPS 回源拉 GitHub 上的包，然后以明文 HTTP 喂给 TinyOS。所以内核不需要 TLS 栈也能真正联网装包 —— 加密由边缘承担，内核只说 HTTP。详见下方「联网下载」与「.pack 多文件包」两节。"
+             data-en="Network download now works end to end: the default HTTP source is a Cloudflare Worker (tinyos-pkg-down.ysbdwz.dpdns.org:80) that terminates TLS at the edge, fetches from GitHub over HTTPS, and serves the result to TinyOS as plain HTTP. So the kernel gets real over-the-network package installation without a TLS stack — the encryption is the edge's job, and the kernel only speaks HTTP. See the “Network download” and “.pack multi-file packages” sections below.">联网下载已跑通：默认 HTTP 源是一个 Cloudflare Worker（tinyos-pkg-down.ysbdwz.dpdns.org:80），它在边缘终结 TLS、再用 HTTPS 回源拉 GitHub 上的包，然后以明文 HTTP 喂给 TinyOS。所以内核不需要 TLS 栈也能真正联网装包 —— 加密由边缘承担，内核只说 HTTP。详见下方「联网下载」与「.pack 多文件包」两节。</p>
         </div>
 
         <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:16px;">
@@ -84,9 +88,9 @@
     <!-- 2. QUICK START -->
     <section id="quickstart" class="section" aria-labelledby="quickstart-title">
       <div class="wrap">
-        <h2 id="quickstart-title" data-zh="快速上手：用本地源装一个包（3 步）✅" data-en="Quick start: install a package from a local source (3 steps) ✅">快速上手：用本地源装一个包（3 步）✅</h2>
-        <p class="section-lead" data-zh="pkg 的 install 从本地源目录读取，不联网。下面以把内置的 packages/repo/ 模板作为源为例：把源目录放到 /home/pkgrepo，确认 /etc/pkg.conf 里的 sourcedir，然后 pkg install。"
-                              data-en="pkg install reads from a local source dir and never touches the network. Using the in-repo packages/repo/ template as the source: place the source dir at /home/pkgrepo, confirm sourcedir in /etc/pkg.conf, then pkg install.">pkg 的 install 从本地源目录读取，不联网。下面以把内置的 packages/repo/ 模板作为源为例：把源目录放到 /home/pkgrepo，确认 /etc/pkg.conf 里的 sourcedir，然后 pkg install。</p>
+        <h2 id="quickstart-title" data-zh="快速上手：装一个包（3 步）✅" data-en="Quick start: install a package (3 steps) ✅">快速上手：装一个包（3 步）✅</h2>
+        <p class="section-lead" data-zh="pkg install 会依次尝试三个源：① 本地源目录（sourcedir）② FTP ③ HTTP 镜像。所以「本地装」和「联网装」用的是同一条命令 —— 放本地就离线用，不放就自动走网络。下面以把内置的 packages/repo/ 模板作为本地源为例：把源目录放到 /home/pkgrepo，确认 /etc/pkg.conf 里的 sourcedir，然后 pkg install。"
+                              data-en="pkg install tries three sources in order: ① local source dir (sourcedir) ② FTP ③ HTTP mirror. So “install locally” and “install over the network” are the same command — drop the files in a local dir to work offline, or don't and it falls through to the network. Using the in-repo packages/repo/ template as the local source: place it at /home/pkgrepo, confirm sourcedir in /etc/pkg.conf, then pkg install.">pkg install 会依次尝试三个源：① 本地源目录（sourcedir）② FTP ③ HTTP 镜像。所以「本地装」和「联网装」用的是同一条命令 —— 放本地就离线用，不放就自动走网络。下面以把内置的 packages/repo/ 模板作为本地源为例：把源目录放到 /home/pkgrepo，确认 /etc/pkg.conf 里的 sourcedir，然后 pkg install。</p>
 
         <ol class="arch" aria-label="本地源安装三步">
           <li class="arch-node">
@@ -125,12 +129,117 @@ pkg install tinysh</code></pre>
       </div>
     </section>
 
-    <!-- 3. SUBCOMMAND REFERENCE -->
+    <!-- 3. NETWORK DOWNLOAD -->
+    <section id="network" class="section" aria-labelledby="network-title">
+      <div class="wrap">
+        <h2 id="network-title" data-zh="联网下载：Worker 中转，内核只说明文 HTTP ✅" data-en="Network download: a Worker relay, plain HTTP in the kernel ✅">联网下载：Worker 中转，内核只说明文 HTTP ✅</h2>
+        <p class="section-lead" data-zh="GitHub 已全面强制 HTTPS：明文请求 raw.githubusercontent.com 只会拿到 301 跳转、没有任何内容。而 TinyOS 内核刻意不做 TLS（只有 SHA-256，没有 AES/GCM/X25519，也没有 X.509 与主机名校验）。解法不是在内核里硬塞一套密码学，而是把 TLS 交给边缘 —— 这就是 Cloudflare Worker 中转。"
+                              data-en="GitHub enforces HTTPS everywhere: a plain-HTTP request to raw.githubusercontent.com gets a 301 redirect and no content. TinyOS deliberately ships no TLS (SHA-256 only — no AES/GCM/X25519, no X.509 or hostname checking). The fix is not to cram cryptography into the kernel but to move TLS to the edge — which is exactly what the Cloudflare Worker relay does.">GitHub 已全面强制 HTTPS：明文请求 raw.githubusercontent.com 只会拿到 301 跳转、没有任何内容。而 TinyOS 内核刻意不做 TLS（只有 SHA-256，没有 AES/GCM/X25519，也没有 X.509 与主机名校验）。解法不是在内核里硬塞一套密码学，而是把 TLS 交给边缘 —— 这就是 Cloudflare Worker 中转。</p>
+
+        <ol class="arch" aria-label="联网下载链路">
+          <li class="arch-node">
+            <span class="arch-tag" data-zh="1. TinyOS" data-en="1. TinyOS">1. TinyOS</span>
+            <span class="arch-detail" data-zh="明文 HTTP GET /tinysh.tncr" data-en="plain HTTP GET /tinysh.tncr">明文 HTTP GET /tinysh.tncr</span>
+          </li>
+          <li class="arch-arrow" aria-hidden="true">→</li>
+          <li class="arch-node">
+            <span class="arch-tag" data-zh="2. Cloudflare 边缘" data-en="2. Cloudflare edge">2. Cloudflare 边缘</span>
+            <span class="arch-detail" data-zh="TLS 在这里终结" data-en="TLS terminates here">TLS 在这里终结</span>
+          </li>
+          <li class="arch-arrow" aria-hidden="true">→</li>
+          <li class="arch-node arch-node-userspace">
+            <span class="arch-tag" data-zh="3. GitHub" data-en="3. GitHub">3. GitHub</span>
+            <span class="arch-detail" data-zh="Worker 用 HTTPS 回源" data-en="Worker re-fetches over HTTPS">Worker 用 HTTPS 回源</span>
+          </li>
+        </ol>
+
+        <div class="code-block">
+          <pre aria-label="联网安装示例"><code># 默认配置（/etc/pkg.conf）已经指向 Worker 镜像
+repo_host=tinyos-pkg-down.ysbdwz.dpdns.org
+repo_port=80
+repo_path=
+
+# 于是联网装包就是同一条命令 —— 本地没有就自动走网络
+pkg install tinysh
+
+# 换个源（FTP 也能配）
+# ftp_host=10.0.2.2
+# ftp_port=21
+# ftp_path=/packages/repo</code></pre>
+        </div>
+
+        <div class="callout" role="note">
+          <h3 data-zh="为什么不用「跳过证书校验」的伪 TLS" data-en="Why not a TLS that skips verification">为什么不用「跳过证书校验」的伪 TLS</h3>
+          <p data-zh="pkg 下载完就要执行代码。如果为了「能连通」而不校验证书链和主机名，等于把中间人攻击的门直接打开 —— 那比明文更危险，因为它还披着 HTTPS 的外衣。所以内核宁可返回一个明确的 notls，也不提供假加密；真正需要加密的那一段，交给能正确校验证书的边缘去做。"
+             data-en="pkg executes what it downloads. Reaching connectivity by skipping certificate-chain and hostname checks would hand the back door to a man in the middle — worse than plaintext, because it still wears an HTTPS costume. So the kernel returns a clear notls rather than shipping fake encryption, and the genuinely encrypted hop is handled by an edge that does verify certificates properly.">pkg 下载完就要执行代码。如果为了「能连通」而不校验证书链和主机名，等于把中间人攻击的门直接打开 —— 那比明文更危险，因为它还披着 HTTPS 的外衣。所以内核宁可返回一个明确的 notls，也不提供假加密；真正需要加密的那一段，交给能正确校验证书的边缘去做。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. .PACK MULTI-FILE PACKAGES -->
+    <section id="pack" class="section" aria-labelledby="pack-title">
+      <div class="wrap">
+        <h2 id="pack-title" data-zh="多文件软件包：.pack 归档 ✅" data-en="Multi-file packages: the .pack archive ✅">多文件软件包：.pack 归档 ✅</h2>
+        <p class="section-lead" data-zh="单文件 .tncr 只够装一个程序。真实的大型软件往往要带一堆附属文件（工具、库、配置）。.pack 就是为此设计的：把一个目录打包成一个归档，安装时按元数据释放到指定目录，并顺手登记好程序映射与环境变量。"
+                              data-en="A single .tncr can only carry one program. Real software usually ships with auxiliary files — tools, libraries, config. That is what .pack is for: bundle a directory into one archive, and on install unpack it into the declared directory while registering program mappings and environment variables.">单文件 .tncr 只够装一个程序。真实的大型软件往往要带一堆附属文件（工具、库、配置）。.pack 就是为此设计的：把一个目录打包成一个归档，安装时按元数据释放到指定目录，并顺手登记好程序映射与环境变量。</p>
+
+        <h3 data-zh="怎么做一个 .pack" data-en="Building a .pack">怎么做一个 .pack</h3>
+        <div class="code-block">
+          <pre aria-label="打包与安装 .pack"><code># 1) 把要打包的文件放进一个目录（可含一层子目录）
+mkdir /home/myapp
+cp myapp.TNCR /home/myapp/
+mkdir /home/myapp/bin
+cp helper.TNCR /home/myapp/bin/
+
+# 2) 打包（tinysh 内置命令，不用开 TinyOS 以外的东西）
+pack /home/myapp -o myapp.pack --name myapp --dir /opt/myapp \
+     --prog myapp=/opt/myapp/myapp.TNCR \
+     --env PATH=/opt/myapp/bin
+
+# 3) 把 myapp.pack 放进源目录后安装
+pkg install myapp.pack
+
+# 4) 直接按名字调用
+run myapp --help</code></pre>
+        </div>
+
+        <h3 data-zh="安装器会做什么" data-en="What the installer does">安装器会做什么</h3>
+        <ul class="matrix">
+          <li class="card">
+            <h3 data-zh="按 install_dir 释放文件" data-en="Extract into install_dir">按 install_dir 释放文件</h3>
+            <p data-zh="归档里 bin/helper.TNCR 这类带子目录的条目会自动建目录后落盘，最终得到 /opt/myapp/bin/helper.TNCR。"
+               data-en="Entries with a subdirectory such as bin/helper.TNCR get their directories created on the fly, ending up as /opt/myapp/bin/helper.TNCR.">归档里 bin/helper.TNCR 这类带子目录的条目会自动建目录后落盘，最终得到 /opt/myapp/bin/helper.TNCR。</p>
+          </li>
+          <li class="card">
+            <h3 data-zh="写 /bin/path 注册表" data-en="Write the /bin/path registry">写 /bin/path 注册表</h3>
+            <p data-zh="元数据里的 prog.* 与 env.* 会被写进 /bin/path，run 命令就是查这张表来定位程序的。"
+               data-en="prog.* and env.* entries in the metadata are written to /bin/path, which is the table run consults to locate a program.">元数据里的 prog.* 与 env.* 会被写进 /bin/path，run 命令就是查这张表来定位程序的。</p>
+          </li>
+          <li class="card card-wide">
+            <h3 data-zh>为什么 .pack 不压缩</h3>
+            <p data-zh="用户态没有 inflate —— 内核的解压实现只服务 romfs，pkg 运行在用户态，拿不到它。所以 .pack 存的是原始字节。这是个诚实的取舍：换来的是「任何机器上解出来的结果完全一致」，代价是包体更大。"
+               data-en="There is no inflate in user space — the kernel's decompressor serves romfs only, and pkg runs in user space where it is unreachable. So .pack stores raw bytes. The trade-off is deliberate: bit-identical extraction everywhere, at the cost of larger packages.">用户态没有 inflate —— 内核的解压实现只服务 romfs，pkg 运行在用户态，拿不到它。所以 .pack 存的是原始字节。这是个诚实的取舍：换来的是「任何机器上解出来的结果完全一致」，代价是包体更大。</p>
+          </li>
+        </ul>
+
+        <h3 data-zh="/bin/path 与 run" data-en="/bin/path and run">/bin/path 与 run</h3>
+        <div class="code-block">
+          <pre aria-label="bin/path 键值对"><code># /bin/path 就是一个纯文本键值表，两类键：
+prog.myapp=/opt/myapp/myapp.TNCR     # 程序名 -> TNCR 路径
+env.PATH=/opt/myapp/bin              # 环境变量
+
+# run 查这张表再执行，等价于「按名字跑程序」
+run myapp --help</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. SUBCOMMAND REFERENCE -->
     <section id="reference" class="section" aria-labelledby="reference-title">
       <div class="wrap">
         <h2 id="reference-title" data-zh="子命令参考表（7 个）✅" data-en="Subcommand reference (7 of them) ✅">子命令参考表（7 个）✅</h2>
-        <p class="section-lead" data-zh="全部 7 个子命令均已在内核实现，下面的说明与例子对应 QEMU 实测行为。"
-                              data-en="All 7 subcommands are implemented in the kernel; the descriptions and examples below match QEMU-verified behaviour.">全部 7 个子命令均已在内核实现，下面的说明与例子对应 QEMU 实测行为。</p>
+        <p class="section-lead" data-zh="全部 7 个子命令均已实现（随 tinysh 用户态程序发布），下面的说明与例子对应 QEMU 实测行为。"
+                              data-en="All 7 subcommands are implemented (shipped as part of the user-space tinysh program); the descriptions and examples below match QEMU-verified behaviour.">全部 7 个子命令均已实现（随 tinysh 用户态程序发布），下面的说明与例子对应 QEMU 实测行为。</p>
 
         <div style="overflow:auto; border:1px solid var(--line); border-radius:var(--radius);">
           <table style="width:100%; border-collapse:collapse; font-size:14px; min-width:640px;">
@@ -191,7 +300,7 @@ pkg install tinysh</code></pre>
           <pre class="term-body" aria-label="pkg 实测输出">root@tinyos:/root# pkg list
 NAME             VERSION        SIZE
 JVM              ?              5851
-tinysh           ?            104144
+tinysh           ?            179104
 LUA              ?            210584
 CC               ?             162680
 EDIT             ?              45980
@@ -203,13 +312,13 @@ root@tinyos:/root# pkg info tinysh
 package: tinysh
   version : ?
   source  : (unregistered: only raw /bin file present)
-  size    : 104144 bytes
-  sha256  : a35a67bc938e91434a3c0e2ac86688e14d95ce948f3e2a7eb6442be7fdb02bda
+  size    : 179104 bytes
+  sha256  : 4c317df355a489aeea5d6f26447f0a0472c67afc7c83b2f4fa4c8229f567f2bc
   verify  : no recorded sha256
 
 root@tinyos:/root# pkg verify
 NAME             RESULT
-tinysh           no sha256 recorded (actual a35a67bc...)
+tinysh           no sha256 recorded (actual 4c317df3...)
 
 root@tinyos:/root# pkg install nosuchpkg
 pkg: package file not found: /home/pkgrepo/nosuchpkg.[tT]NCR
@@ -253,8 +362,8 @@ pkg: removed tinysh</pre>
 
         <h3 data-zh="实测的 tinysh 校验值" data-en="Measured tinysh hash">实测的 tinysh 校验值</h3>
         <div class="code-block" role="img" aria-label="tinysh 实测 sha256">
-          <pre aria-label="tinysh sha256"><code>sha256: a35a67bc938e91434a3c0e2ac86688e14d95ce948f3e2a7eb6442be7fdb02bda
-size  : 104144 bytes  (file: tinysh.TNCR)</code></pre>
+          <pre aria-label="tinysh sha256"><code>sha256: 4c317df355a489aeea5d6f26447f0a0472c67afc7c83b2f4fa4c8229f567f2bc
+size  : 179104 bytes  (file: tinysh.TNCR)</code></pre>
         </div>
         <p class="chart-note" data-zh="这个值是 QEMU 实测算出的真实哈希，已回填进 packages/tinysh/tinysh.manifest 的 sha256 字段。因此对 tinysh 而言，install 与 verify 都能做真正的完整性校验。"
            data-en="This is the real hash measured under QEMU and now filled into the sha256 field of packages/tinysh/tinysh.manifest. So for tinysh, both install and verify run genuine integrity checks.">这个值是 QEMU 实测算出的真实哈希，已回填进 packages/tinysh/tinysh.manifest 的 sha256 字段。因此对 tinysh 而言，install 与 verify 都能做真正的完整性校验。</p>
@@ -289,7 +398,7 @@ sourcedir /home/pkgrepo</code></pre>
         <ul class="matrix">
           <li class="card">
             <h3>tinysh.tncr</h3>
-            <p data-zh="真实的 104144 字节产物（与镜像内 /bin/tinysh.TNCR 一致）。" data-en="The real 104144-byte artifact (matches /bin/tinysh.TNCR inside the image).">真实的 104144 字节产物（与镜像内 /bin/tinysh.TNCR 一致）。</p>
+            <p data-zh="真实的 179104 字节产物（与镜像内 /bin/tinysh.TNCR 一致）。" data-en="The real 179104-byte artifact (matches /bin/tinysh.TNCR inside the image).">真实的 179104 字节产物（与镜像内 /bin/tinysh.TNCR 一致）。</p>
           </li>
           <li class="card">
             <h3>tinysh.manifest</h3>
@@ -357,13 +466,11 @@ sourcedir /home/pkgrepo</code></pre>
                               data-en="The honest zone: the following are still unimplemented in v0.1. Do not treat them as working features.">诚实区：下面这些在 v0.1 里仍是未实现。不要把它们当成已可用功能。</p>
 
         <div class="callout" role="note" style="border-left-color: var(--warn); background: rgba(255,209,102,.08);">
-          <h3 data-zh="🚧 GitHub 直连：CONNECT 隧道已实现，TLS 尚未实现" data-en="🚧 GitHub direct: CONNECT tunnel done, TLS not yet">🚧 GitHub 直连：CONNECT 隧道已实现，TLS 尚未实现</h3>
-          <p data-zh="内核已有最小 HTTP/1.1 客户端（src/kernel/net/http.c）与 HTTP CONNECT 代理支持。但有个硬事实必须说清：GitHub 已全面强制 HTTPS，实测直连 raw.githubusercontent.com 的明文请求会拿到 301 跳转、没有任何内容。所以从 GitHub 拉包必须经过能终结 TLS 的代理。"
-             data-en="The kernel now has a minimal HTTP/1.1 client (src/kernel/net/http.c) with HTTP CONNECT proxy support. One hard fact has to be stated plainly: GitHub enforces HTTPS everywhere. A plain-HTTP request to raw.githubusercontent.com gets a 301 redirect and no content, so pulling from GitHub requires a proxy that terminates TLS.">内核已有最小 HTTP/1.1 客户端与 CONNECT 代理支持，但 GitHub 强制 HTTPS。</p>
-          <p data-zh="TLS 明确未实现，不是遗漏。内核只有 SHA-256，没有 AES / GCM / ChaCha20 / X25519，也没有 X.509 解析与主机名校验。一套能用的 TLS 1.3 客户端约需 1500 行以上裸机密码学代码，而且必须校验证书链到内置根 CA 并核对主机名。pkg 用来下载并执行代码，跳过证书验证等于给中间人开门 —— 那比明文更危险。所以内核宁可返回明确的 notls，也不提供「假装加密」的伪 TLS。"
-             data-en="TLS is explicitly not implemented, rather than forgotten. The kernel has SHA-256 only: no AES, GCM, ChaCha20 or X25519, and no X.509 parsing or hostname checking. A working TLS 1.3 client is 1500+ lines of bare-metal cryptography, and it must validate the certificate chain to a built-in root CA and check the hostname. pkg downloads and executes code, so skipping verification would hand the back door to a man in the middle — worse than plaintext. The kernel returns a clear notls instead of shipping a TLS that only pretends to encrypt.">TLS 明确未实现：内核只有 SHA-256，缺 AES/GCM/X25519 与 X.509 校验。宁可返回 notls，也不做跳过证书验证的伪 TLS。</p>
-          <p data-zh="配置方式：在 /etc/pkg.conf 里填 https_proxy_host 与 https_proxy_port。隧道建好后会明确告诉你「隧道通了，但内核没有 TLS 栈，读不了密文」，而不是含糊报错。"
-             data-en="To configure: set https_proxy_host and https_proxy_port in /etc/pkg.conf. Once the tunnel is up you get a precise message — the tunnel worked, but the kernel has no TLS stack and cannot read the ciphertext — rather than a vague failure.">配置：/etc/pkg.conf 里填 https_proxy_host 与 https_proxy_port。</p>
+          <h3 data-zh="🚧 内核仍无 TLS：CONNECT 隧道可用，密文读不了" data-en="🚧 Still no kernel TLS: the CONNECT tunnel works, the ciphertext does not">🚧 内核仍无 TLS：CONNECT 隧道可用，密文读不了</h3>
+          <p data-zh="内核有最小 HTTP/1.1 客户端（src/kernel/net/http.c）与 HTTP CONNECT 代理支持，隧道能建起来，但隧道之后需要 TLS 栈才能读密文 —— 这一步内核做不到，所以会明确返回 notls。默认路径不依赖它：pkg 走 Cloudflare Worker 中转，TLS 在边缘终结，内核对上游只说明文 HTTP。"
+             data-en="The kernel has a minimal HTTP/1.1 client (src/kernel/net/http.c) with HTTP CONNECT proxy support. The tunnel comes up, but reading the ciphertext past it needs a TLS stack, which the kernel does not have — so it returns a clear notls. The default path does not rely on it: pkg goes through a Cloudflare Worker relay where TLS terminates at the edge, and the kernel speaks plain HTTP to the upstream.">内核有最小 HTTP/1.1 客户端（src/kernel/net/http.c）与 HTTP CONNECT 代理支持，隧道能建起来，但隧道之后需要 TLS 栈才能读密文 —— 这一步内核做不到，所以会明确返回 notls。默认路径不依赖它：pkg 走 Cloudflare Worker 中转，TLS 在边缘终结，内核对上游只说明文 HTTP。</p>
+          <p data-zh="为什么不用「跳过证书校验」的伪 TLS：内核只有 SHA-256，没有 AES / GCM / ChaCha20 / X25519，也没有 X.509 解析与主机名校验。一套能用的 TLS 1.3 客户端约需 1500 行以上裸机密码学代码，而且必须校验证书链到内置根 CA 并核对主机名。pkg 用来下载并执行代码，跳过证书验证等于给中间人开门 —— 那比明文更危险。所以内核宁可返回明确的 notls，也不提供「假装加密」的伪 TLS。"
+             data-en="Why no “TLS that skips verification”: the kernel has SHA-256 only — no AES, GCM, ChaCha20 or X25519, and no X.509 parsing or hostname checking. A working TLS 1.3 client is 1500+ lines of bare-metal cryptography, and it must validate the certificate chain to a built-in root CA and check the hostname. pkg downloads and executes code, so skipping verification would hand the back door to a man in the middle — worse than plaintext. The kernel returns a clear notls instead of shipping a TLS that only pretends to encrypt.">为什么不用「跳过证书校验」的伪 TLS：内核只有 SHA-256，没有 AES / GCM / ChaCha20 / X25519，也没有 X.509 解析与主机名校验。一套能用的 TLS 1.3 客户端约需 1500 行以上裸机密码学代码，而且必须校验证书链到内置根 CA 并核对主机名。pkg 用来下载并执行代码，跳过证书验证等于给中间人开门 —— 那比明文更危险。所以内核宁可返回明确的 notls，也不提供「假装加密」的伪 TLS。</p>
         </div>
 
         <ul class="matrix">
@@ -378,9 +485,9 @@ sourcedir /home/pkgrepo</code></pre>
                data-en="Packages built into the image were never registered via pkg, so pkg list / pkg info have no version to show and print ?; info notes unregistered: only raw /bin file present. This is missing data, not a bug.">随镜像内置的包未经 pkg 登记，pkg list / pkg info 拿不到版本，于是显示 ?，info 注为 unregistered: only raw /bin file present。这是数据缺失，不是 bug。</p>
           </li>
           <li class="card card-wide">
-            <h3 data-zh="🚧 三个包仍是空壳" data-en="🚧 Three packages are still empty shells">🚧 三个包仍是空壳</h3>
-            <p data-zh="tncr / web-admin-panel / demos 三个目录没有产物，其 manifest 的 sha256 仍是 __BUILD_FILL__ 占位符。因此它们无法被 pkg 真正校验安装 —— 只有 tinysh 目前拥有真实的 104144 字节产物与真实 sha256。"
-               data-en="The tncr / web-admin-panel / demos directories have no artifact, and their manifest sha256 is still the __BUILD_FILL__ placeholder. So they cannot be genuinely verified or installed by pkg — only tinysh currently has a real 104144-byte artifact and a real sha256.">tncr / web-admin-panel / demos 三个目录没有产物，其 manifest 的 sha256 仍是 __BUILD_FILL__ 占位符。因此它们无法被 pkg 真正校验安装 —— 只有 tinysh 目前拥有真实的 104144 字节产物与真实 sha256。</p>
+            <h3 data-zh="🚧 .pack 目录只支持一层子目录" data-en="🚧 .pack only walks one level of subdirectories">🚧 .pack 目录只支持一层子目录</h3>
+            <p data-zh="pack 命令目前把源目录及其下一层子目录收进归档，更深的嵌套会被跳过。已实测可用（20/20 端到端用例通过），但递归深度是已知限制。另外 .pack 不压缩，原因见上一节。"
+               data-en="The pack command currently collects the source dir plus one level of subdirectories; deeper nesting is skipped. It is verified working (20/20 end-to-end cases), but the recursion depth is a known limitation. And .pack is uncompressed, for the reason described above.">pack 命令目前把源目录及其下一层子目录收进归档，更深的嵌套会被跳过。已实测可用（20/20 端到端用例通过），但递归深度是已知限制。另外 .pack 不压缩，原因见上一节。</p>
           </li>
         </ul>
       </div>
@@ -390,8 +497,44 @@ sourcedir /home/pkgrepo</code></pre>
     <section id="inventory" class="section" aria-labelledby="inventory-title">
       <div class="wrap">
         <h2 id="inventory-title" data-zh="软件包列表：点开看详情" data-en="Package list: click for details">软件包列表：点开看详情</h2>
-        <p class="section-lead" data-zh="packages/ 下每个包都可以点开，展开它的 manifest 字段、产物体积、校验和与逐文件清单。下面的数据直接来自仓库里的 manifest 与构建产物，不是手写的介绍文字。"
-                              data-en="Every package under packages/ is clickable and expands to show its manifest fields, artifact size, checksum and a per-file listing. The data below comes straight from the manifests and build artifacts in the repository, not from hand-written marketing copy.">packages/ 下每个包都可以点开，展开它的 manifest 字段、产物体积、校验和与逐文件清单。下面的数据直接来自仓库里的 manifest 与构建产物，不是手写的介绍文字。</p>
+        <p class="section-lead" data-zh="远程仓库 packages/repo/ 目前有 15 个带真实产物与真实 sha256 的包，Worker 镜像对外提供它们；点开任意条目可看 manifest 字段、产物体积、校验和与逐文件清单。下面的数据直接来自仓库里的 manifest 与构建产物，不是手写的介绍文字。"
+                              data-en="The remote repository packages/repo/ currently holds 15 packages with real artifacts and real sha256 digests, all served by the Worker mirror; click any entry to expand its manifest fields, artifact size, checksum and per-file listing. The data below comes straight from the manifests and build artifacts in the repository, not from hand-written marketing copy.">远程仓库 packages/repo/ 目前有 15 个带真实产物与真实 sha256 的包，Worker 镜像对外提供它们；点开任意条目可看 manifest 字段、产物体积、校验和与逐文件清单。下面的数据直接来自仓库里的 manifest 与构建产物，不是手写的介绍文字。</p>
+        <p class="chart-note" data-zh="提示：每次重新构建后跑 python tools/sync_repo.py 刷新本目录（复制产物 + 重算 sha256 + 重生成 INDEX.json），再跑 python tools/sync_site_facts.py 同步本页数字。两道校验都会在不一致时直接报错。"
+                           data-en="Note: after every rebuild, run python tools/sync_repo.py to refresh this directory (copy artifacts, recompute sha256, regenerate INDEX.json), then python tools/sync_site_facts.py to sync the numbers on this page. Both steps fail loudly on any mismatch.">提示：每次重新构建后跑 python tools/sync_repo.py 刷新本目录（复制产物 + 重算 sha256 + 重生成 INDEX.json），再跑 python tools/sync_site_facts.py 同步本页数字。两道校验都会在不一致时直接报错。</p>
+
+        <h3 data-zh="仓库里的全部包（真实产物与校验和）" data-en="Every package in the repo (real artifacts and digests)">仓库里的全部包（真实产物与校验和）</h3>
+        <p class="chart-note" data-zh="下表由 tools/sync_site_facts.py 从 packages/repo/ 的真实文件生成，不是手写的。sha256 一列是产物字节数的 SHA-256，与各包 manifest 里声明的值一致 —— 这正是 pkg install 用来验包的那一个。"
+                           data-en="This table is generated by tools/sync_site_facts.py from the real files in packages/repo/, not hand-written. The sha256 column is the SHA-256 of the artifact bytes and matches what each manifest declares — the very value pkg install verifies against.">下表由 tools/sync_site_facts.py 从 packages/repo/ 的真实文件生成，不是手写的。sha256 一列是产物字节数的 SHA-256，与各包 manifest 里声明的值一致 —— 这正是 pkg install 用来验包的那一个。</p>
+
+        <!-- PKGTABLE:BEGIN （由 tools/sync_site_facts.py 自动生成，勿手改） --> （由 tools/sync_site_facts.py 自动生成，勿手改） -->
+        <div class="code-block">
+          <pre aria-label="仓库包清单"><code>packages/repo/  --  15 packages, all with real artifacts
+
+NAME               SIZE  SHA256 (head)     MANIFEST
+------------  ---------  ----------------  ----------------------------
+CC               162680  2cd651fb19122096...  CC.manifest
+DESKTOP              34  02b93608bb92b3c6...  DESKTOP.manifest
+EDIT              45980  0d00374174c79942...  EDIT.manifest
+JVM                5851  152792856b7d8541...  JVM.manifest
+LUA              210584  8294b5a55b4ab7bc...  LUA.manifest
+SSHD             114500  2507b0deaf22551b...  SSHD.manifest
+basic_demo          204  b9e6faf53975ca7b...  basic_demo.manifest
+count               877  347c41ce0a4f48c5...  count.manifest
+cpp_demo            339  b3c76dd35c1c9abe...  cpp_demo.manifest
+gui_demo            470  e553e1be79b1da41...  gui_demo.manifest
+hello               214  050668ab67b7743b...  hello.manifest
+minic_demo          500  ca92e2c0b062ee06...  minic_demo.manifest
+net_demo            467  3d41ba3758a15394...  net_demo.manifest
+tiny_demo           238  dfdefb943aa31c6d...  tiny_demo.manifest
+tinysh           179104  4c317df355a489ae...  tinysh.manifest
+
+total: 15 packages, 722042 bytes (705.1 KB)</code></pre>
+        </div>
+        <!-- PKGTABLE:END -->
+
+        <h3 data-zh="精选条目：点开看细节" data-en="Featured entries: click for details">精选条目：点开看细节</h3>
+        <p class="chart-note" data-zh="下面这张可展开的卡片表是<b>精选</b>：tinysh 是真实可安装的产物；demos 是把 8 个 demo 合并说明的「说明包」；tncr 与 web-admin-panel 仍属规划中，因此 sha256 保持占位符、不参与安装。"
+                           data-en="The expandable card list below is a <b>curated selection</b>: tinysh is a real installable artifact; demos is a documentation package covering the 8 demos; tncr and web-admin-panel are still planned, so their sha256 stays a placeholder and they are not installable.">下面这张可展开的卡片表是<b>精选</b>：tinysh 是真实可安装的产物；demos 是把 8 个 demo 合并说明的「说明包」；tncr 与 web-admin-panel 仍属规划中，因此 sha256 保持占位符、不参与安装。</p>
 
         <div id="pkgcat" class="pkgcat">
           <div id="pkgcat-list" role="list" aria-label="packages"></div>
@@ -413,7 +556,7 @@ version: v0.1
 description: TinyOS Genesis 默认 Shell（/bin/tinysh.tncr）
 dependencies: []
 min_compiler: tncr>=0.1
-sha256: a35a67bc938e91434a3c0e2ac86688e14d95ce948f3e2a7eb6442be7fdb02bda
+sha256: 4c317df355a489aeea5d6f26447f0a0472c67afc7c83b2f4fa4c8229f567f2bc
 build:
   entry: src/tinysh.c
   output: /bin/tinysh.tncr

@@ -57,7 +57,7 @@
           <ul class="hero-facts" aria-label="关键事实">
             <li><strong>i386</strong> <span data-zh="保护模式" data-en="protected mode">保护模式</span></li>
             <li><strong>56&nbsp;KB</strong> <span data-zh="压缩只读文件系统" data-en="compressed romfs">压缩只读文件系统</span></li>
-            <li><strong>27/27</strong> <span data-zh="端到端自动化测试通过" data-en="end-to-end tests passing">端到端自动化测试通过</span></li>
+            <li><strong>20/20</strong> <span data-zh="pack / run 端到端用例通过" data-en="pack / run end-to-end cases passing">pack / run 端到端用例通过</span></li>
           </ul>
         </div>
         <div class="hero-art" aria-hidden="true">
@@ -93,7 +93,7 @@
         <ul class="matrix">
           <li class="card">
             <h3 data-zh="tinysh 在线体验" data-en="tinysh live">tinysh 在线体验</h3>
-            <p data-zh="19 条命令的用户态 shell，登录后自动进入，可在线试玩真实会话。" data-en="The 19-command user-space shell — auto-launched after login; try a real session.">19 条命令的用户态 shell，登录后自动进入，可在线试玩真实会话。</p>
+            <p data-zh="22 条命令的用户态 shell，登录后自动进入，可在线试玩真实会话。" data-en="The 22-command user-space shell — auto-launched after login; try a real session.">22 条命令的用户态 shell，登录后自动进入，可在线试玩真实会话。</p>
             <a class="card-link" href="tinysh.html" data-zh="进入 →" data-en="Open →">进入 →</a>
           </li>
           <li class="card">
@@ -203,8 +203,8 @@
           </li>
           <li class="card card-wide">
             <h3 data-zh="tinysh 用户态 shell" data-en="tinysh user-space shell">tinysh 用户态 shell</h3>
-            <p data-zh="19 条命令：help version sysinfo date ls cd pwd cat mkdir rm touch ps kill devlist readdev writedev echo clear exit。已通过 27 项端到端自动化测试。"
-               data-en="19 commands: help version sysinfo date ls cd pwd cat mkdir rm touch ps kill devlist readdev writedev echo clear exit. Passed 27 end-to-end automated tests.">19 条命令：help version sysinfo date ls cd pwd cat mkdir rm touch ps kill devlist readdev writedev echo clear exit。已通过 27 项端到端自动化测试。</p>
+            <p data-zh="22 条命令：help version sysinfo date ls cd pwd cat mkdir rm touch ps kill devlist readdev writedev echo clear exit pkg pack run。pack / run 端到端用例 20/20 通过（QEMU 串口驱动）。"
+               data-en="22 commands: help version sysinfo date ls cd pwd cat mkdir rm touch ps kill devlist readdev writedev echo clear exit pkg pack run. The pack / run end-to-end suite passes 20/20, driven over the QEMU serial port.">22 条命令：help version sysinfo date ls cd pwd cat mkdir rm touch ps kill devlist readdev writedev echo clear exit pkg pack run。pack / run 端到端用例 20/20 通过（QEMU 串口驱动）。</p>
           </li>
         </ul>
       </div>
@@ -302,8 +302,8 @@ start.bat</code></pre>
              data-en="On first boot the image runs a 5-step install wizard (disk / network / software / accounts / confirm). Step 4 (accounts) asks for the root password (>=3 chars, typed twice). After login you land in tinysh; `exit` drops back to the kernel shell (uname / mem / ps / disk / net / help / lua).">镜像首次启动会跑 5 步安装向导（disk / network / software / accounts / confirm）。第 4 步 accounts 需设置 root 密码（≥3 位，输入两遍）。登录后自动进入 tinysh；exit 退回内核 shell（uname / mem / ps / disk / net / help / lua）。</p>
         </div>
 
-        <p class="chart-note" data-zh="提示：全部测试由 QEMU 串口自动化驱动，27/27 通过，无需人工点击。"
-                           data-en="Note: all tests run via QEMU serial automation, 27/27 passing, no manual clicks.">提示：全部测试由 QEMU 串口自动化驱动，27/27 通过，无需人工点击。</p>
+        <p class="chart-note" data-zh="提示：端到端用例由 QEMU 串口自动化驱动，pack / run 套件 20/20 通过，无需人工点击。"
+                           data-en="Note: end-to-end cases run via QEMU serial automation; the pack / run suite passes 20/20 with no manual clicks.">提示：端到端用例由 QEMU 串口自动化驱动，pack / run 套件 20/20 通过，无需人工点击。</p>
       </div>
     </section>
 
@@ -319,7 +319,7 @@ start.bat</code></pre>
             <h3 class="done-head" data-zh="✅ 已完成 · v0.1" data-en="✅ Done · v0.1">✅ 已完成 · v0.1</h3>
             <ul class="done-list">
               <li data-zh="可引导 i386 保护模式镜像（tinyos.img）" data-en="Bootable i386 protected-mode image (tinyos.img)">可引导 i386 保护模式镜像（tinyos.img）</li>
-              <li data-zh="tinysh 用户态 shell，19 条命令，27 项端到端测试通过" data-en="tinysh user-space shell, 19 commands, 27 end-to-end tests passing">tinysh 用户态 shell，19 条命令，27 项端到端测试通过</li>
+              <li data-zh="tinysh 用户态 shell，22 条命令，pack / run 端到端 20/20 通过" data-en="tinysh user-space shell, 22 commands, pack / run end-to-end 20/20 passing">tinysh 用户态 shell，22 条命令，pack / run 端到端 20/20 通过</li>
               <li data-zh="Lua 5.4.7 解释器（TNCR，用户态）" data-en="Lua 5.4.7 interpreter (TNCR, user space)">Lua 5.4.7 解释器（TNCR，用户态）</li>
               <li data-zh="VFS / 压缩 romfs、进程、硬件寄存器直访" data-en="VFS / compressed romfs, processes, direct hardware-register access">VFS / 压缩 romfs、进程、硬件寄存器直访</li>
               <li data-zh="VGA 文本桌面 + PS/2 键鼠、e1000 网卡驱动" data-en="VGA text desktop + PS/2 keyboard/mouse, e1000 NIC driver">VGA 文本桌面 + PS/2 键鼠、e1000 网卡驱动</li>

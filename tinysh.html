@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="TinyOS Genesis v0.1 — tinysh 在线体验页：一个能真正敲命令的浏览器端 tinysh 行为模拟器，覆盖 19 条命令、虚拟文件系统、进程表与硬件寄存器访问。" />
+  <meta name="description" content="TinyOS Genesis v0.1 — tinysh 在线体验页：一个能真正敲命令的浏览器端 tinysh 行为模拟器，覆盖 22 条命令、虚拟文件系统、进程表与硬件寄存器访问。" />
   <title>TinyOS Genesis v0.1 · tinysh 在线体验</title>
   <link rel="stylesheet" href="style.css" />
   <style>
@@ -86,8 +86,8 @@
     <section class="page-head wrap" aria-labelledby="page-title">
       <p class="kicker" data-zh="用户态 shell · 浏览器在线体验" data-en="User-space shell · live in your browser">用户态 shell · 浏览器在线体验</p>
       <h1 id="page-title">tinysh 在线体验</h1>
-      <p class="lede" data-zh="这是 TinyOS Genesis 的 shell。下面是一个真正能敲命令的模拟器，覆盖真实的 19 条命令、虚拟文件系统、进程表与硬件寄存器访问。它不是内核内建，而是一个用户态 TNCR 程序。"
-         data-en="This is the shell of TinyOS Genesis. Below is a truly interactive simulator covering the real 19 commands, a virtual filesystem, the process table and hardware-register access. It is not kernel-builtin — it is a user-space TNCR program.">这是 TinyOS Genesis 的 shell。下面是一个真正能敲命令的模拟器，覆盖真实的 19 条命令、虚拟文件系统、进程表与硬件寄存器访问。它不是内核内建，而是一个用户态 TNCR 程序。</p>
+      <p class="lede" data-zh="这是 TinyOS Genesis 的 shell。下面是一个真正能敲命令的模拟器，覆盖真实的 22 条命令、虚拟文件系统、进程表与硬件寄存器访问。它不是内核内建，而是一个用户态 TNCR 程序。"
+         data-en="This is the shell of TinyOS Genesis. Below is a truly interactive simulator covering the real 22 commands, a virtual filesystem, the process table and hardware-register access. It is not kernel-builtin — it is a user-space TNCR program.">这是 TinyOS Genesis 的 shell。下面是一个真正能敲命令的模拟器，覆盖真实的 22 条命令、虚拟文件系统、进程表与硬件寄存器访问。它不是内核内建，而是一个用户态 TNCR 程序。</p>
     </section>
 
     <!-- ============ 模拟器 ============ -->
@@ -133,7 +133,7 @@
          data-en="A genuine user-space TNCR program, not a kernel builtin.">一个真正的用户态 TNCR 程序，不是内核内建。</p>
 
       <div class="card">
-        <h3 data-zh="/bin/tinysh.TNCR · 104144 字节" data-en="/bin/tinysh.TNCR · 104144 bytes">/bin/tinysh.TNCR · 104144 字节</h3>
+        <h3 data-zh="/bin/tinysh.TNCR · 179104 字节" data-en="/bin/tinysh.TNCR · 179104 bytes">/bin/tinysh.TNCR · 179104 字节</h3>
         <p data-zh="tinysh 是打包成自定义 TNCR 格式的用户程序，由 TNCR 加载器载入用户态运行。它不能直接碰硬件或内存，只能通过 tinyos_api_t 函数指针表去访问内核提供的服务（文件、进程、设备寄存器）。内核里没有写死一个 shell，换掉这个 TNCR 文件就能换 shell。"
            data-en="tinysh is a user program packaged in the custom TNCR format and loaded into user space by the TNCR loader. It cannot touch hardware or memory directly; it can only reach kernel services (files, processes, device registers) through the tinyos_api_t function-pointer table. The kernel has no hard-wired shell — swap this TNCR file and you swap the shell.">tinysh 是打包成自定义 TNCR 格式的用户程序，由 TNCR 加载器载入用户态运行。它不能直接碰硬件或内存，只能通过 <span class="hint-code">tinyos_api_t</span> 函数指针表去访问内核提供的服务（文件、进程、设备寄存器）。内核里没有写死一个 shell，换掉这个 TNCR 文件就能换 shell。</p>
       </div>
@@ -147,7 +147,7 @@
 
     <!-- ============ 命令表 ============ -->
     <section class="section wrap" aria-labelledby="cmds-title">
-      <h2 id="cmds-title" data-zh="命令表（19 条）" data-en="Command reference (19)">命令表（19 条）</h2>
+      <h2 id="cmds-title" data-zh="命令表（22 条）" data-en="Command reference (22)">命令表（22 条）</h2>
       <p class="section-lead" data-zh="英文命令名 + 中文说明 + 例子。所有上屏输出强制英文 ASCII（见下方设计约束）。"
          data-en="English command names + Chinese descriptions + examples. All on-screen output is forced to English ASCII (see design constraints below).">英文命令名 + 中文说明 + 例子。所有上屏输出强制英文 ASCII（见下方设计约束）。</p>
 
@@ -175,6 +175,9 @@
           <tr><td class="code">echo</td><td class="desc" data-zh="原样回显文本" data-en="Echo a line of text verbatim">原样回显文本</td><td class="ex">echo hello tinyos</td></tr>
           <tr><td class="code">clear</td><td class="desc" data-zh="清屏" data-en="Clear the screen">清屏</td><td class="ex">clear</td></tr>
           <tr><td class="code">exit</td><td class="desc" data-zh="退出 tinysh（回到内核 shell）" data-en="Exit tinysh (return to the kernel shell)">退出 tinysh（回到内核 shell）</td><td class="ex">exit</td></tr>
+          <tr><td class="code">pkg</td><td class="desc" data-zh="软件包管理：list / info / verify / install / remove / source" data-en="Package manager: list / info / verify / install / remove / source">软件包管理：list / info / verify / install / remove / source</td><td class="ex">pkg install tinysh</td></tr>
+          <tr><td class="code">pack</td><td class="desc" data-zh="把一个目录打成 .pack 多文件软件包" data-en="Bundle a directory into a multi-file .pack package">把一个目录打成 .pack 多文件软件包</td><td class="ex">pack /home/myapp -o myapp.pack --name myapp</td></tr>
+          <tr><td class="code">run</td><td class="desc" data-zh="查 /bin/path 的 prog.&lt;名字&gt; 映射并执行该 TNCR" data-en="Look up prog.&lt;name&gt; in /bin/path and execute that TNCR">查 /bin/path 的 prog.&lt;名字&gt; 映射并执行该 TNCR</td><td class="ex">run myapp --help</td></tr>
         </tbody>
       </table>
 
@@ -197,13 +200,13 @@
 
     <!-- ============ 测试 ============ -->
     <section class="section wrap" aria-labelledby="tests-title">
-      <h2 id="tests-title" data-zh="测试：27 项端到端自动化测试" data-en="Testing: 27 end-to-end automated tests">测试：27 项端到端自动化测试</h2>
+      <h2 id="tests-title" data-zh="测试：QEMU 串口端到端自动化" data-en="Testing: end-to-end automation over the QEMU serial port">测试：QEMU 串口端到端自动化</h2>
       <p class="section-lead" data-zh="全部通过，无人工点击。"
          data-en="All passing, no manual clicks.">全部通过，无人工点击。</p>
-      <p data-zh="tinysh 的 19 条命令由 27 项端到端自动化测试覆盖。测试在 QEMU 串口上驱动真实内核，逐字比对 tinysh 的上屏输出（英文 ASCII），包含：未知命令、缺参数、文件不存在、删目录被拒绝、Tab 补全等边界。整个测试套件由脚本自动运行，无需人工点击，结果 27/27 通过。"
-         data-en="tinysh's 19 commands are covered by 27 end-to-end automated tests. The tests drive the real kernel over the QEMU serial port and compare tinysh's on-screen output (English ASCII) character by character, including edge cases: unknown command, missing argument, file not found, directory-removal rejected, and Tab completion. The whole suite runs automatically — no manual clicks — and passes 27/27.">tinysh 的 19 条命令由 27 项端到端自动化测试覆盖。测试在 QEMU 串口上驱动真实内核，逐字比对 tinysh 的上屏输出（英文 ASCII），包含：未知命令、缺参数、文件不存在、删目录被拒绝、Tab 补全等边界。整个测试套件由脚本自动运行，无需人工点击，结果 27/27 通过。</p>
+      <p data-zh="测试在 QEMU 串口上驱动真实内核走完整启动路径（安装向导 → 登录 → tinysh），逐字比对上屏输出（英文 ASCII）。目前已验证的是 pack / run 套件，共 20 个用例全部通过：造多文件源目录、pack 打包、pkg install 解包到 install_dir、子目录条目落盘、env / prog 写进 /bin/path、cat /bin/path 核对、run 查表执行、run 未知程序报错、help 收录新命令。整套流程由脚本自动运行，无需人工点击。"
+         data-en="The tests drive the real kernel over the QEMU serial port through the full boot path (install wizard → login → tinysh) and compare on-screen output (English ASCII) character by character. What is verified today is the pack / run suite: all 20 cases pass — building a multi-file source dir, packing it, unpacking via pkg install into install_dir, writing subdirectory entries, registering env / prog into /bin/path, checking it with cat /bin/path, run locating and executing a program, run reporting an unknown program, and help listing the new commands. The whole flow is script-driven with no manual clicks.">测试在 QEMU 串口上驱动真实内核走完整启动路径（安装向导 → 登录 → tinysh），逐字比对上屏输出（英文 ASCII）。目前已验证的是 pack / run 套件，共 20 个用例全部通过：造多文件源目录、pack 打包、pkg install 解包到 install_dir、子目录条目落盘、env / prog 写进 /bin/path、cat /bin/path 核对、run 查表执行、run 未知程序报错、help 收录新命令。整套流程由脚本自动运行，无需人工点击。</p>
       <ul class="hero-facts" aria-label="测试关键事实">
-        <li><strong>27/27</strong> <span data-zh="端到端测试通过" data-en="end-to-end tests passing">端到端测试通过</span></li>
+        <li><strong>20/20</strong> <span data-zh="pack / run 端到端用例通过" data-en="pack / run end-to-end cases passing">pack / run 端到端用例通过</span></li>
         <li><strong>QEMU</strong> <span data-zh="串口驱动，无人工点击" data-en="serial-driven, no manual clicks">串口驱动，无人工点击</span></li>
         <li><strong>19</strong> <span data-zh="条命令全覆盖" data-en="commands fully covered">条命令全覆盖</span></li>
       </ul>
@@ -299,7 +302,7 @@
 
       var FS = makeDir({
         bin: makeDir({
-          'tinysh.TNCR': makeFile(104144),
+          'tinysh.TNCR': makeFile(179104),
           'LUA.TNCR': makeFile(210584),
           'SSHD.TNCR': makeFile(114500),
           'EDIT.TNCR': makeFile(45980),

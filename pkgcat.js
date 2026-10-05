@@ -29,10 +29,10 @@
       state: 'ready',
       dir: 'packages/tinysh/',
       out: '/bin/tinysh.TNCR',
-      size: 104144,
-      sha: 'a35a67bc938e91434a3c0e2ac86688e14d95ce948f3e2a7eb6442be7fdb02bda',
+      size: 179104,
+      sha: '4c317df355a489aeea5d6f26447f0a0472c67afc7c83b2f4fa4c8229f567f2bc',
       files: [
-        { n: 'src/tinysh.c', l: 263, note: '命令分发与 20 条命令的实现（含 pkg）' },
+        { n: 'src/tinysh.c', l: 263, note: '命令分发与 22 条命令的实现（含 pkg / pack / run）' },
         { n: 'src/kernel_api_tinyos.c', l: 256, note: 'TNCR 后端，把 kernel_api 转成 tinyos_api_t 调用' },
         { n: 'src/kernel_api_host.c', l: 264, note: 'POSIX 宿主后端，供离线自测，带 main()' },
         { n: 'src/tinysh.h', l: 54, note: '错误码枚举、命令表结构、历史缓冲' },
@@ -42,16 +42,16 @@
         { n: 'src/README.md', l: 72, note: '包说明' },
         { n: 'src/test_session.txt', l: 14, note: '宿主后端冒烟测试用的输入脚本' }
       ],
-      descZh: '系统默认 Shell，登录后自动进入。20 条内置命令，外加一条三级命令查找链：内置 → 内核命令（45 个）→ /bin 下的程序。',
-      descEn: 'The default shell, started automatically after login. 20 built-in commands plus a three-level lookup chain: builtins, then the 45 kernel commands, then programs under /bin.',
+      descZh: '系统默认 Shell，登录后自动进入。22 条内置命令，外加一条三级命令查找链：内置 → 内核命令（45 个）→ /bin 下的程序。',
+      descEn: 'The default shell, started automatically after login. 22 built-in commands plus a three-level lookup chain: builtins, then the 45 kernel commands, then programs under /bin.',
       detailZh: [
         'tinysh 是真正的用户态 TNCR 程序，不是内核内建。它只能通过 tinyos_api_t 函数指针表访问内核，自己一行内核代码都碰不到。',
-        '命令查找链是它最有价值的设计：tinysh 内置 21 个命令，但内核有 45 个。敲 uname / mem / disk / lua / edit 时，内置表里没有，就转发给内核执行；再找不到就去 /bin 找同名 .TNCR，把参数拼好交给它运行。',
+        '命令查找链是它最有价值的设计：tinysh 内置 22 个命令，但内核有 45 个。敲 uname / mem / disk / lua / edit 时，内置表里没有，就转发给内核执行；再找不到就去 /bin 找同名 .TNCR，把参数拼好交给它运行。',
         'pkg 子命令也在这里面 —— 它需要 shell、配置解析和大量文件读写，这些都不该在内核里，所以内核只暴露了 sha256_file 这一个原语。'
       ],
       detailEn: [
         'tinysh is a real user-space TNCR program, not a kernel builtin. It reaches the kernel only through the tinyos_api_t function-pointer table.',
-        'The lookup chain is its most valuable feature: tinysh has 21 built-ins while the kernel has 45. Type uname, mem, disk, lua or edit, miss the builtin table, and the call is forwarded to the kernel. If that misses too, /bin is searched for a matching .TNCR and the arguments are handed to it.',
+        'The lookup chain is its most valuable feature: tinysh has 22 built-ins while the kernel has 45. Type uname, mem, disk, lua or edit, miss the builtin table, and the call is forwarded to the kernel. If that misses too, /bin is searched for a matching .TNCR and the arguments are handed to it.',
         'The pkg subcommand lives here too. It needs a shell, config parsing and heavy file I/O, none of which belong in the kernel, so the kernel exposes exactly one primitive: sha256_file.'
       ]
     },
