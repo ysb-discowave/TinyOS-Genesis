@@ -128,6 +128,7 @@ ${rows}
 // 把上游响应原样透传，但加上缓存头与 CORS。
 async function proxyUpstream(file, kind) {
   const upstream = await fetch(UPSTREAM + file, {
+    cache: 'no-store',
     headers: { 'user-agent': UA, accept: '*/*' },
   });
 
@@ -149,8 +150,8 @@ async function proxyUpstream(file, kind) {
     'content-type': kind === 'manifest' ? 'text/plain; charset=utf-8'
                                            : 'application/octet-stream',
     // manifest 变化频繁，二进制基本不变。
-    'cache-control': kind === 'manifest' ? 'public, max-age=300'
-                                         : 'public, max-age=3600',
+    'cache-control': kind === 'manifest' ? 'public, max-age=120'
+                                         : 'public, max-age=300',
     'x-tinyos-mirror': 'tinyos-pkg/0.1',
   });
   // Content-Length 交给 Cloudflare 自己算，避免与压缩后的长度不一致。
