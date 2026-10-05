@@ -138,6 +138,18 @@ typedef struct tinyos_api {
                      void *buf, int max, int *out_len);
     int  (*http_get_file)(const char *host, int port, const char *path,
                           const char *local);   /* 分块下载整文件到本地 VFS 路径 */
+    /* 走 HTTP CONNECT 代理。GitHub 全面强制 HTTPS（明文一律 301 跳转），
+     * 企业网络里通常由代理终结 TLS。proxy_host 为空则退化为明文直连。 */
+    int  (*http_get_proxy)(const char *host, int port, const char *path,
+                           const char *proxy_host, int proxy_port,
+                           void *buf, int max, int *out_len);
+    int  (*http_get_file_proxy)(const char *host, int port, const char *path,
+                                const char *local,
+                                const char *proxy_host, int proxy_port);
+    /* 探测代理能否为目标建立 CONNECT 隧道。
+     * 返回 0 隧道可用；HTTP_E_NOTLS 表示隧道通了但内核缺 TLS 栈。 */
+    int  (*http_tunnel)(const char *proxy_host, int proxy_port,
+                        const char *host, int port);
 } tinyos_api_t;
 
 /* 用户程序入口（由 TNCR 加载器调用） */
@@ -176,5 +188,13 @@ int  k_http_get(const char *host, int port, const char *path,
                 void *buf, int max, int *out_len);    /* 薄封装 http_get */
 int  k_http_get_file(const char *host, int port, const char *path,
                      const char *local);              /* 薄封装 http_get_file */
+int  k_http_get_proxy(const char *host, int port, const char *path,
+                      const char *proxy_host, int proxy_port,
+                      void *buf, int max, int *out_len);
+int  k_http_get_file_proxy(const char *host, int port, const char *path,
+                           const char *local,
+                           const char *proxy_host, int proxy_port);
+int  k_http_tunnel(const char *proxy_host, int proxy_port,
+                   const char *host, int port);
 
 #endif

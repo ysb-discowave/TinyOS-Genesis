@@ -1,11 +1,15 @@
 /* ============================================================
- * http.c — 最小 HTTP/1.1 客户端（仅 GET，明文，无 TLS）
+ * http.c — 最小 HTTP/1.1 客户端（仅 GET）+ HTTP CONNECT 代理
  * ------------------------------------------------------------
  * 复用内核已有的 DNS（dns_resolve）与 TCP 栈（tcp_connect 等），
  * 不重写底层网络。照 ftp.c 的"主动连接外网"方式写。
  *
- * 实测前提：raw.githubusercontent.com 明文 HTTP 可用，返回 200 且
- * Content-Length 正确，因此本文件不实现 TLS。
+ * 【更正】早先这里写着"实测 raw.githubusercontent.com 明文可用" ——
+ * 那是宿主代理造成的假象。直连 GitHub 真实 IP 测得的是 301 跳 HTTPS，
+ * 明文拿不到包。详见 include/http.h 的详细说明。
+ *
+ * 代理路径：CONNECT 隧道可用；隧道之后需要 TLS，而内核没有 TLS 栈，
+ * 因此直连 HTTPS 明确返回 HTTP_E_NOTLS，不做"跳过证书验证"的假 TLS。
  * ============================================================ */
 #include "net.h"
 #include "http.h"
@@ -32,6 +36,8 @@ const char *http_strerror(int code) {
         case HTTP_E_BADST:  return "malformed status line";
         case HTTP_E_NOMEM:  return "out of memory";
         case HTTP_E_WRITE:  return "failed to write the local file";
+        case HTTP_E_PROXY:  return "proxy refused the CONNECT tunnel";
+        case HTTP_E_NOTLS:  return "https needs TLS, which the kernel does not implement yet";
         default:            return "unknown error";
     }
 }
@@ -151,8 +157,11 @@ static long http_head_len(u32 ip, int port, const char *host, const char *path) 
     if (tcp_wait_established(c, 5000) != 0) { tcp_close(c); return 0; }
     char req[512];
     int rl = snprintf(req, sizeof req,
-        "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\n"
-        "Accept: */*\r\nConnection: close\r\n\r\n", path, host, HTTP_UA);
+        "CONNECT %s:%d HTTP/1.1\r\n"
+        "Host: %s:%d\r\n"
+        "User-Agent: %s\r\n"
+        "Proxy-Connection: keep-alive\r\n"
+        "\r\n", host, port, host, port, HTTP_UA);
     if (rl <= 0 || rl >= (int)sizeof req || tcp_send(c, (const u8 *)req, (u32)rl) != rl) {
         tcp_close(c); return 0;
     }
@@ -223,4 +232,89 @@ int http_get_file(const char *host, int port, const char *path, const char *loca
     }
     kfree(full);
     return rc;
+}
+
+/* ==========================================================================
+ * HTTP CONNECT 代理
+ * ========================================================================== */
+
+/* 读一条响应头（到 
+
+ 为止）并解析状态码。
+ * 成功返回 0 且 *code 收到状态码；失败返回 HTTP_E_*。 */
+static int read_status(tcp_conn_t *c, u8 *buf, int max, int *code) {
+    int total = 0;
+    u32 waited = 0;
+    for (;;) {
+        int n = tcp_recv(c, buf + total, (u32)(max - total));
+        if (n > 0) {
+            total += n; waited = 0;
+            if (total >= max) return HTTP_E_HDRBIG;
+            /* 头结束符 */
+            for (int i = 3; i < total; i++)
+                if (buf[i-3]=='\r' && buf[i-2]=='\n' && buf[i-1]=='\r' && buf[i]=='\n') {
+                    int sp = 0;
+                    while (sp < i && buf[sp] != ' ') sp++;
+                    if (sp + 3 >= i) return HTTP_E_BADST;
+                    *code = (buf[sp+1]-'0')*100 + (buf[sp+2]-'0')*10 + (buf[sp+3]-'0');
+                    return 0;
+                }
+            continue;
+        }
+        if (tcp_closed_by_peer(c)) return HTTP_E_RECV;
+        net_poll(); pit_sleep(1);
+        if (++waited >= 5000) return HTTP_E_TIMEOUT;
+    }
+}
+
+int http_connect_tunnel(const char *proxy_host, int proxy_port,
+                        const char *host, int port) {
+    if (!proxy_host || !proxy_host[0] || !host) return HTTP_E_INVAL;
+    if (proxy_port <= 0) proxy_port = 8080;
+    if (port <= 0) port = 443;
+
+    u32 ip = host_to_ip(proxy_host);
+    if (ip == 0) return HTTP_E_DNS;
+
+    tcp_conn_t *c = tcp_connect(ip, (u16)proxy_port);
+    if (!c) return HTTP_E_CONN;
+    if (tcp_wait_established(c, 5000) != 0) { tcp_close(c); return HTTP_E_TIMEOUT; }
+
+    char req[256];
+    int rl = snprintf(req, sizeof req,
+        "CONNECT %s:%d HTTP/1.1\r\n"
+        "Host: %s:%d\r\n"
+        "User-Agent: %s\r\n"
+        "Proxy-Connection: keep-alive\r\n"
+        "\r\n", host, port, host, port, HTTP_UA);
+    if (rl <= 0 || rl >= (int)sizeof req) { tcp_close(c); return HTTP_E_INVAL; }
+    if (tcp_send(c, (const u8 *)req, (u32)rl) != rl) { tcp_close(c); return HTTP_E_SEND; }
+
+    u8 hdr[512];
+    int code = 0;
+    int r = read_status(c, hdr, (int)sizeof hdr, &code);
+    if (r != 0) { tcp_close(c); return r; }
+    if (code != 200) { tcp_close(c); return HTTP_E_PROXY; }
+
+    /* 隧道已建立，但接下来是 TLS 密文 —— 内核没有 TLS 栈。
+     * 如实返回明确错误，绝不"跳过证书验证"假装加密。 */
+    tcp_close(c);
+    return HTTP_E_NOTLS;
+}
+
+int http_get_proxy(const char *host, int port, const char *path,
+                   const char *proxy_host, int proxy_port,
+                   void *buf, int max, int *out_len) {
+    /* 没配代理就退化成原来的明文直连，行为不变（向后兼容）。 */
+    if (!proxy_host || !proxy_host[0])
+        return http_get(host, port, path, buf, max, out_len);
+    return HTTP_E_NOTLS;
+}
+
+int http_get_file_proxy(const char *host, int port, const char *path,
+                        const char *local,
+                        const char *proxy_host, int proxy_port) {
+    if (!proxy_host || !proxy_host[0])
+        return http_get_file(host, port, path, local);
+    return HTTP_E_NOTLS;
 }

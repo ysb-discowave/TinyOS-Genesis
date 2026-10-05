@@ -236,3 +236,25 @@ int k_http_get_file(const char *host, int port, const char *path,
                     const char *local) {
     return http_get_file(host, port, path, local);
 }
+
+/* --- HTTP CONNECT 代理 ---
+ * GitHub 全面强制 HTTPS（明文一律 301 跳转），企业网络里通常由代理终结
+ * TLS。这些只是薄封装，真正的工作在 net/http.c。 */
+int k_http_get_proxy(const char *host, int port, const char *path,
+                     const char *proxy_host, int proxy_port,
+                     void *buf, int max, int *out_len) {
+    return http_get_proxy(host, port, path, proxy_host, proxy_port,
+                          buf, max, out_len);
+}
+
+int k_http_get_file_proxy(const char *host, int port, const char *path,
+                          const char *local,
+                          const char *proxy_host, int proxy_port) {
+    return http_get_file_proxy(host, port, path, local,
+                               proxy_host, proxy_port);
+}
+
+int k_http_tunnel(const char *proxy_host, int proxy_port,
+                  const char *host, int port) {
+    return http_connect_tunnel(proxy_host, proxy_port, host, port);
+}

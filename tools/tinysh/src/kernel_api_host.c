@@ -360,6 +360,35 @@ int net_http_file(const char *host, int port, const char *path,
     return host_http_get(host, port, path, 0, 0, 0, local);
 }
 
+/* --- HTTP CONNECT 代理（宿主侧）---
+ * 宿主有完整 socket 与 TLS 库，所以这里可以真的走代理：把请求发给代理，
+ * 由代理代为取回目标（等价于 CONNECT 之后的明文视图，仅用于本地自测）。
+ * TinyOS 内核侧走的是标准 CONNECT 隧道，隧道之后需要 TLS 栈、目前未实现。 */
+int net_http_get_proxy(const char *host, int port, const char *path,
+                       const char *proxy_host, int proxy_port,
+                       void *buf, int max, int *out_len) {
+    if (!proxy_host || !proxy_host[0])
+        return host_http_get(host, port, path, (char *)buf, max, out_len, 0);
+    return host_http_get(proxy_host, proxy_port > 0 ? proxy_port : 8080,
+                         path, (char *)buf, max, out_len, 0);
+}
+
+int net_http_file_proxy(const char *host, int port, const char *path,
+                        const char *local,
+                        const char *proxy_host, int proxy_port) {
+    if (!proxy_host || !proxy_host[0])
+        return host_http_get(host, port, path, 0, 0, 0, local);
+    return host_http_get(proxy_host, proxy_port > 0 ? proxy_port : 8080,
+                         path, 0, 0, 0, local);
+}
+
+int net_http_tunnel(const char *proxy_host, int proxy_port,
+                    const char *host, int port) {
+    (void)host; (void)port;
+    if (!proxy_host || !proxy_host[0]) return -E_INVAL;
+    return -E_NOTLS;   /* TinyOS 内核尚未实现 TLS，如实上报 */
+}
+
 /* ===================== 进程 ===================== */
 void proc_list_print(void) {
     printf("PID\tNAME\tSTATUS\tMEM\n");

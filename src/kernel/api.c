@@ -225,4 +225,7 @@ tinyos_api_t g_api = {
     /* ---- Genesis v0.1 http 扩展（pkg 从 GitHub raw 源拉包）---- */
     .http_get      = k_http_get,
     .http_get_file = k_http_get_file,
+    .http_get_proxy = k_http_get_proxy,
+    .http_get_file_proxy = k_http_get_file_proxy,
+    .http_tunnel = k_http_tunnel,
 };

@@ -264,6 +264,30 @@ int net_http_file(const char *host, int port, const char *path,
     return g_api->http_get_file(host, port, path, abs_local);
 }
 
+int net_http_get_proxy(const char *host, int port, const char *path,
+                       const char *proxy_host, int proxy_port,
+                       void *buf, int max, int *out_len) {
+    if (!g_api) return -E_IO;
+    return g_api->http_get_proxy(host, port, path, proxy_host, proxy_port,
+                                 buf, max, out_len);
+}
+
+int net_http_file_proxy(const char *host, int port, const char *path,
+                        const char *local,
+                        const char *proxy_host, int proxy_port) {
+    if (!g_api) return -E_IO;
+    char abs_local[512];
+    resolve_path(local, abs_local, sizeof abs_local);
+    return g_api->http_get_file_proxy(host, port, path, abs_local,
+                                      proxy_host, proxy_port);
+}
+
+int net_http_tunnel(const char *proxy_host, int proxy_port,
+                    const char *host, int port) {
+    if (!g_api) return -E_IO;
+    return g_api->http_tunnel(proxy_host, proxy_port, host, port);
+}
+
 /* ------------------------------------------------------------------ */
 /* 命令查找链：把 tinysh 转发请求转调内核 tinyos_api_t                  */
 /* ------------------------------------------------------------------ */

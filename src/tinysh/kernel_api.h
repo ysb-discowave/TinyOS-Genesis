@@ -56,6 +56,18 @@ int  net_http_get(const char *host, int port, const char *path,
  * 返回 0 成功，负数错误码。 */
 int  net_http_file(const char *host, int port, const char *path,
                    const char *local);
+/* 走 HTTP CONNECT 代理的下载。GitHub 全面强制 HTTPS（明文一律 301 跳转），
+ * 企业网络通常由代理终结 TLS。proxy_host 为空则退化为明文直连。
+ * 注意：隧道之后需要 TLS 栈，内核目前尚未实现，会返回 -E_NOTLS。 */
+int  net_http_get_proxy(const char *host, int port, const char *path,
+                        const char *proxy_host, int proxy_port,
+                        void *buf, int max, int *out_len);
+int  net_http_file_proxy(const char *host, int port, const char *path,
+                         const char *local,
+                         const char *proxy_host, int proxy_port);
+/* 探测代理能否为目标建立 CONNECT 隧道。0 = 可用，负数见 tinysh.h 错误码。 */
+int  net_http_tunnel(const char *proxy_host, int proxy_port,
+                     const char *host, int port);
 
 /* ---- 进程管理 ---- */
 void proc_list_print(void);

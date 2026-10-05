@@ -22,7 +22,8 @@ enum {
     E_PERM   = 4,   /* 权限不足，禁止操作 */
     E_INVAL  = 5,   /* 无效参数，参数格式错误 */
     E_IO     = 6,   /* IO 读写失败 */
-    E_NOPID  = 7    /* 进程 PID 不存在 */
+    E_NOPID  = 7,   /* 进程 PID 不存在 */
+    E_NOTLS  = 8    /* 需要 TLS，但内核尚未实现加密栈 */
 };
 
 typedef int (*cmd_fn)(int argc, char **argv);

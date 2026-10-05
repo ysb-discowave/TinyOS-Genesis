@@ -1,24 +1,44 @@
 /* ============================================================================
- * http.c -- 最小 HTTP/1.1 客户端（只支持 GET）
+ * http.c -- 最小 HTTP/1.1 客户端（只支持 GET）+ HTTP CONNECT 代理
  * ----------------------------------------------------------------------------
  * 用途：让用户态的 pkg 直接从 raw.githubusercontent.com 拉软件包，
  *       不需要用户先把仓库克隆到本地。
  *
- * 为什么是明文 HTTP 而不是 HTTPS：
- *   内核没有任何加密栈（没有 TLS/AES/X25519），实现 TLS 意味着 1500+ 行
- *   裸机密码学代码，安全风险极高。而 raw.githubusercontent.com 的明文
- *   HTTP 端点是可访问的，**包完整性由 SHA256 保证，不依赖传输层加密**——
- *   这正是包管理器该用的模型：不可信的链路 + 可信的校验和。
+ * 【重要更正：明文 HTTP 走不通】
+ *   本文件早先的注释断言"raw.githubusercontent.com 的明文端点可访问，
+ *   包完整性由 SHA256 保证，因此不需要传输层加密"。**那个结论是错的**，
+ *   它来自一次被宿主代理污染的测试。实测直连 GitHub 的真实 IP：
+ *
+ *     GET /... Host: raw.githubusercontent.com        (明文 80)
+ *     -> HTTP 301, Location: https://raw.githubusercontent.com/...
+ *
+ *   GitHub 已全面强制 HTTPS，明文一律 301 跳转。所以 pkg 走 http:// 拿不到
+ *   包。这不是实现问题，是服务端策略。
+ *
+ * 两条可行路径：
+ *   1. 走 HTTPS 代理（本文件支持的 CONNECT 隧道）。代理终结 TLS，
+ *      TinyOS 只发明文 HTTP 给代理 —— 这是常见的企业网络形态。
+ *   2. 直连 HTTPS，需要内核长出完整 TLS 栈（见下）。
+ *
+ * 【关于 TLS —— 明确未实现，不是遗漏】
+ *   内核只有 SHA-256（src/kernel/sha256.c），**没有** AES / GCM /
+ *   ChaCha20 / X25519 / Poly1305，也**没有** X.509 解析与主机名校验。
+ *   一套能用的 TLS 1.3 客户端约需 1500+ 行裸机密码学代码，而且
+ *   **必须**校验证书链到内置根 CA 并核对主机名，否则等于给中间人开门。
+ *   pkg 用来下载并执行代码，这个洞的后果比明文更严重。
+ *   所以本文件选择：CONNECT 隧道可用；直连 HTTPS 明确返回
+ *   HTTP_E_NOTLS，并在 pkg 输出与官网里如实标注。
+ *   **绝不提供"跳过证书验证"的伪 TLS。**
  *
  * 复用内核已有的网络栈，不重写任何底层：
- *   dns_resolve()      域名解析（net.h 公开 API）
- *   tcp_connect/tcp_wait_established/tcp_send/tcp_readline/tcp_read_exact
- *   ip_parse()         纯 IP 字面量
+ *   host_to_ip()          域名解析（自动区分 IP 字面量与域名）
+ *   tcp_connect/tcp_send/tcp_readline/tcp_wait_established
  *
  * 错误码（都取负值，便于 tinysh 打印有意义的信息）：
  *   -1 参数错误   -2 DNS 失败      -3 TCP 连接失败   -4 连接超时
  *   -5 发送失败   -6 响应读取失败 -7 非 200 状态    -8 响应头过大
- *   -9 body 过大  -10 状态行异常
+ *   -9 body 过大  -10 状态行异常  -11 内存不足     -12 写文件失败
+ *   -13 代理拒绝 CONNECT       -14 需要 TLS 但内核尚未实现
  * ========================================================================== */
 #ifndef TINYOS_HTTP_H
 #define TINYOS_HTTP_H
@@ -38,6 +58,8 @@
 #define HTTP_E_BADST   -10   /* 状态行格式异常 */
 #define HTTP_E_NOMEM   -11   /* 内存不足（无法分配下载缓冲）*/
 #define HTTP_E_WRITE   -12   /* 写本地文件失败 */
+#define HTTP_E_PROXY   -13   /* 代理拒绝了 CONNECT（非 200）*/
+#define HTTP_E_NOTLS   -14   /* 需要 TLS，但内核尚未实现 TLS 栈*/
 
 /* 把错误码翻成一句英文说明（供用户态直接打印）。
  * 返回值是字符串常量，不要释放。 */
@@ -76,5 +98,35 @@ int http_get(const char *host, int port, const char *path,
  */
 int http_get_file(const char *host, int port, const char *path,
                   const char *local);
+
+/* ---------------------------------------------------------------------------
+ * 代理支持
+ * ------------------------------------------------------------------------ */
+
+/* 通过 HTTP 代理为 (host, port) 建立 CONNECT 隧道。
+ *
+ *   proxy_host/proxy_port  代理地址（域名或 IP 都行）
+ *   host/port              目标地址
+ *
+ * 流程：解析代理 -> TCP 连代理 -> 发 CONNECT -> 校验响应必须是 200。
+ * 成功后这条连接上传输的是**目标 TLS 密文**，不要在它上面发普通 HTTP。
+ *
+ * 代理不可用或拒绝时返回 HTTP_E_CONN / HTTP_E_PROXY。
+ * 隧道建立成功但内核没有 TLS 栈时返回 HTTP_E_NOTLS —— 这是当前的实际
+ * 情况，如实上报而不是假装加密。
+ */
+int http_connect_tunnel(const char *proxy_host, int proxy_port,
+                        const char *host, int port);
+
+/* 走代理的 GET。代理参数为空时退化为 http_get（明文直连）。
+ * 语义与 http_get 完全一致。 */
+int http_get_proxy(const char *host, int port, const char *path,
+                   const char *proxy_host, int proxy_port,
+                   void *buf, int max, int *out_len);
+
+/* 走代理的分块下载（语义与 http_get_file 一致）。 */
+int http_get_file_proxy(const char *host, int port, const char *path,
+                        const char *local,
+                        const char *proxy_host, int proxy_port);
 
 #endif
