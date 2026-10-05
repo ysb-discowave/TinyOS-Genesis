@@ -216,4 +216,9 @@ tinyos_api_t g_api = {
 
     /* ---- Genesis v0.1 pkg 扩展 ---- */
     .sha256_file   = k_sha256_file,
+
+    /* ---- 命令查找链（供 tinysh 转发到内核命令 / 外部 TNCR 程序）---- */
+    .kcmd_exists   = k_cmd_exists,
+    .kcmd_exec     = k_cmd_exec,
+    .prog_exec     = k_prog_exec,
 };

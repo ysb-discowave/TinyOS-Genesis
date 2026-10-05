@@ -18,6 +18,7 @@
 #include "libc.h"
 #include "user.h"
 #include "sha256.h"
+#include "tncr.h"
 
 /* ----------------------------------------------------------------
  * 设备表（devlist / readdev / writedev 用）
@@ -166,4 +167,55 @@ int k_sha256_file(const char *path, char *out, int n) {
     }
     out[64] = 0;
     return 0;
+}
+
+/* ================================================================
+ * 命令查找链（供 tinysh 转发到内核命令 / 外部 TNCR 程序）
+ * ----------------------------------------------------------------
+ * 严格约束只允许改少数文件，shell.c 的命令实现不能动，所以这里单独
+ * 维护一份“内核命令名清单”用于纯查询。它和 shell.c 现有的分发链是
+ * 同一份事实的两处副本（shell.c 那边是真正的实现 + 别名分发），
+ * 新增内核命令时两处都要加。k_cmd_exists 只做 strcmp，绝不执行命令，
+ * 因此没有副作用，也不会和 shell_exec 的别名逻辑打架。
+ * ================================================================ */
+static const char *k_shell_cmds[] = {
+    /* 与 tinysh 重叠、但 tinysh 优先的内置同名命令（此处仍登记为内核命令，
+     * 以便 kcmd_exists 在 tinysh 没抢走前能正确辨识） */
+    "help", "ls", "cd", "pwd", "cat", "mkdir", "rm", "ps", "echo", "clear",
+    /* 内核独占命令 */
+    "write", "edit", "fs", "run", "desktop", "shot", "screendump", "mouse",
+    "net", "whoami", "id", "install", "setup", "wizard", "netconf",
+    "part", "partitions", "disk", "sshd", "tinysh", "users", "su", "passwd",
+    "useradd", "userdel", "chmod", "chown", "login", "logout",
+    "uname", "mem", "uptime", "compile", "cc", "lua",
+    0
+};
+
+int k_cmd_exists(const char *name) {
+    if (!name || !name[0]) return 0;
+    for (int i = 0; k_shell_cmds[i]; i++)
+        if (strcmp(name, k_shell_cmds[i]) == 0) return 1;
+    return 0;
+}
+
+int k_cmd_exec(const char *name, char *args, int n) {
+    (void)n;  /* args 已经是拼好的参数字符串，n（参数个数）这里用不到 */
+    if (!name || !name[0]) return -1;
+    /* 拼成 “name args” 再交给 shell_exec（它自己会拆命令名与参数）。
+     * 注意补一个空格，且 args 为空时不留尾随空格。 */
+    char cmd[384];
+    if (args && args[0])
+        snprintf(cmd, sizeof cmd, "%s %s", name, args);
+    else
+        snprintf(cmd, sizeof cmd, "%s", name);
+    return shell_exec(cmd, proc_current_session());
+}
+
+int k_prog_exec(const char *path, char *args, int n) {
+    (void)n;  /* session 由 proc_current_session() 取，n 这里用不到 */
+    if (!path || !path[0]) return -1;
+    /* 与 shell.c 的 run_tncr_with_arg 等价：先把参数串存给下一个 TNCR 程序，
+     * 再用当前会话跑它。shell_set_arg / tncr_run 都是公开符号。 */
+    shell_set_arg(args ? args : "");
+    return tncr_run(path, proc_current_session());
 }

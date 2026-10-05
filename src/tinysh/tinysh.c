@@ -80,6 +80,9 @@ static int cmd_help(int argc, char **argv) {
             const cmd_t *c = cmd_get(i);
             printf("  %-9s %s\n", c->name, c->desc);
         }
+        printf("command lookup chain:\n");
+        printf("  1) tinysh builtin (above)  2) kernel command  3) /bin/<name>.TNCR\n");
+        printf("  e.g. `uname`, `net info`, `disk`, `useradd` reach the kernel.\n");
         return E_OK;
     }
     const cmd_t *c = cmd_find(argv[1]);
@@ -608,6 +611,29 @@ const cmd_t *cmd_find(const char *name) {
 int cmd_count(void) { return (int)(sizeof(g_cmds) / sizeof(g_cmds[0])); }
 const cmd_t *cmd_get(int i) { return &g_cmds[i]; }
 
+/* 把 argv[1..] 用空格拼回一个字符串（跳过 argv[0] 命令名），
+ * 供转发给内核命令 / 外部 TNCR 程序时使用。 */
+static void join_args(int argc, char **argv, char *buf, int n) {
+    int w = 0;
+    buf[0] = 0;
+    for (int i = 1; i < argc && w < n - 1; i++) {
+        if (i > 1) { if (w < n - 1) buf[w++] = ' '; }
+        const char *s = argv[i];
+        while (*s && w < n - 1) buf[w++] = *s++;
+    }
+    buf[w] = 0;
+}
+
+/* 检查 /bin/<name>.TNCR 是否安装（pkg 软件）。
+ * 用 fs_read 探 1 字节：文件缺失返回 -E_NOENT，存在（含空文件）返回 >=0。 */
+static int pkg_prog_exists(const char *name) {
+    char path[512];
+    snprintf(path, sizeof path, "%s/%s.TNCR", PKG_BIN_DIR, name);
+    char probe;
+    long r = fs_read(path, &probe, 1);
+    return r >= 0;
+}
+
 /* ===================== REPL 主循环（§6） ===================== */
 int tinysh_run(void) {
     hist_init();
@@ -637,11 +663,30 @@ int tinysh_run(void) {
         hist_add(start);
 
         const cmd_t *c = cmd_find(argv[0]);
-        if (!c) { printf("tinysh: %s\n", errmsg(E_UNKNOWN)); continue; }
-
-        int r = c->func(argc, argv);
-        if (r != E_OK) printf("tinysh: %s\n", errmsg(r));
-        if (g_exit) break;
+        if (c) {
+            /* 第 1 级：tinysh 内置命令（优先，遮蔽同名内核命令） */
+            int r = c->func(argc, argv);
+            if (r != E_OK) printf("tinysh: %s\n", errmsg(r));
+            if (g_exit) break;
+            continue;
+        }
+        /* 第 2 级：内核命令（如 uname / net / disk / useradd ...） */
+        if (kcmd_exists(argv[0])) {
+            char args[LINE_MAX];
+            join_args(argc, argv, args, sizeof args);
+            kcmd_exec(argv[0], args);
+            continue;
+        }
+        /* 第 3 级：pkg 安装的软件 /bin/<name>.TNCR */
+        if (pkg_prog_exists(argv[0])) {
+            char path[512];
+            snprintf(path, sizeof path, "%s/%s.TNCR", PKG_BIN_DIR, argv[0]);
+            char args[LINE_MAX];
+            join_args(argc, argv, args, sizeof args);
+            prog_exec(path, args);
+            continue;
+        }
+        printf("tinysh: unknown command: %s\n", argv[0]);
     }
     printf("tinysh terminated\n");
     return 0;

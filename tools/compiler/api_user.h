@@ -122,6 +122,17 @@ typedef struct tinyos_api {
      * 避免把 sha256_ctx 这种内核结构体泄漏给用户态。返回 0 成功，
      * out 写入 64 字符小写十六进制 + 结尾 0（需 >=65 字节）。 ---- */
     int  (*sha256_file)(const char *path, char *out, int n);
+
+    /* ================================================================
+     * 命令查找链（追加在末尾，已在磁盘上的旧 TNCR 不受影响）。
+     * 供 tinysh 等用户态 shell 使用：一条命令若不是 tinysh 内置，
+     * 先问内核有没有同名命令，没有再去看 /bin/<name>.TNCR 这种
+     * pkg 安装的软件。优先级：内置 -> 内核命令 -> pkg 软件。
+     * 必须与 kernel/include/api.h 完全一致。
+     * ================================================================ */
+    int  (*kcmd_exists)(const char *name);   /* 1=是内核命令 0=不是（纯查询，不执行） */
+    int  (*kcmd_exec)(const char *name, char *args, int n);  /* 把 name + args 交给 shell_exec */
+    int  (*prog_exec)(const char *path, char *args, int n);   /* 跑 /bin 下的 TNCR 程序 */
 } tinyos_api_t;
 
 /* 用户程序入口。

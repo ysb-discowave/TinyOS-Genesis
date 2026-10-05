@@ -251,6 +251,22 @@ int net_ftp_fetch(const char *host, int port, const char *user,
 }
 
 /* ------------------------------------------------------------------ */
+/* 命令查找链：把 tinysh 转发请求转调内核 tinyos_api_t                  */
+/* ------------------------------------------------------------------ */
+int kcmd_exists(const char *name) {
+    if (!g_api) return 0;
+    return g_api->kcmd_exists(name);
+}
+int kcmd_exec(const char *name, const char *args) {
+    if (!g_api) return -1;
+    return g_api->kcmd_exec((char *)name, (char *)(args ? args : ""), 0);
+}
+int prog_exec(const char *path, const char *args) {
+    if (!g_api) return -1;
+    return g_api->prog_exec((char *)path, (char *)(args ? args : ""), 0);
+}
+
+/* ------------------------------------------------------------------ */
 /* 裸机 shim 缺的符号（lua_shim.c 未提供 / 原本由 Lua 的 lua_main.c 提供）*/
 /* ------------------------------------------------------------------ */
 /* tinysh 不用 stdio 的 FILE 流（文件读写走 tinyos_api_t 的

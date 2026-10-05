@@ -58,4 +58,12 @@ int  hw_devlist(hw_dev **out, int *n);
 int  hw_readdev(const char *dev, unsigned addr, unsigned *val);
 int  hw_writedev(const char *dev, unsigned addr, unsigned val);
 
+/* ---- 命令查找链（tinysh 三级查找：内置 -> 内核命令 -> pkg 软件）----
+ * 仅 TinyOS 用户态后端（kernel_api_tinyos.c）真正连到内核 tinyos_api_t；
+ * 宿主后端（kernel_api_host.c）无内核命令表，kcmd_exists 返回 0、
+ * kcmd_exec / prog_exec 直接报错，但必须能编过。 */
+int  kcmd_exists(const char *name);              /* 1=是内核命令 0=不是 */
+int  kcmd_exec(const char *name, const char *args);  /* 转发给内核执行 */
+int  prog_exec(const char *path, const char *args);   /* 跑 /bin 下的 TNCR 程序 */
+
 #endif /* KERNEL_API_H */

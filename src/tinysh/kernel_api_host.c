@@ -69,24 +69,41 @@ static void line_replace(char *buf, int *pos, const char *s) {
     fputs(buf, stdout); fflush(stdout);
 }
 
+/* 内核命令名（仅用于宿主端 Tab 补全；产品构建由内核自己的 readline
+ * 完成补全）。这里是宿主冒烟测试的候选项，和内核 genesis_api.c 的命令
+ * 名单是同一事实的两份副本——产品侧以 genesis_api.c 为准。只列 tinysh
+ * 没有的内核独占命令，避免和下面内置命令补全重复打印。 */
+static const char *g_kcmds[] = {
+    "write", "edit", "fs", "run", "desktop", "shot", "screendump", "mouse",
+    "net", "whoami", "id", "install", "setup", "wizard", "netconf",
+    "part", "partitions", "disk", "sshd", "tinysh", "users", "su", "passwd",
+    "useradd", "userdel", "chmod", "chown", "login", "logout",
+    "uname", "mem", "uptime", "compile", "cc", "lua", 0
+};
+
 static void tab_complete(char *buf, int *pos) {
     for (int i = 0; i < *pos; i++)
         if (buf[i] == ' ') return;
-    int wl = *pos, n = 0; const cmd_t *first = NULL;
+    int wl = *pos, n = 0; const char *first = NULL;
     for (int i = 0; i < cmd_count(); i++) {
         const cmd_t *c = cmd_get(i);
-        if (strncmp(c->name, buf, wl) == 0) { n++; if (!first) first = c; }
+        if (strncmp(c->name, buf, wl) == 0) { n++; if (!first) first = c->name; }
+    }
+    for (int i = 0; g_kcmds[i]; i++) {
+        if (strncmp(g_kcmds[i], buf, wl) == 0) { n++; if (!first) first = g_kcmds[i]; }
     }
     if (n == 1) {
-        int L = (int)strlen(first->name);
-        for (int i = wl; i < L && *pos < LINE_MAX - 1; i++) buf[(*pos)++] = first->name[i];
-        buf[*pos] = 0; fputs(first->name + wl, stdout); fflush(stdout);
+        int L = (int)strlen(first);
+        for (int i = wl; i < L && *pos < LINE_MAX - 1; i++) buf[(*pos)++] = first[i];
+        buf[*pos] = 0; fputs(first + wl, stdout); fflush(stdout);
     } else if (n > 1) {
         printf("\r\n");
         for (int i = 0; i < cmd_count(); i++) {
             const cmd_t *c = cmd_get(i);
             if (strncmp(c->name, buf, wl) == 0) printf("%s ", c->name);
         }
+        for (int i = 0; g_kcmds[i]; i++)
+            if (strncmp(g_kcmds[i], buf, wl) == 0) printf("%s ", g_kcmds[i]);
         printf("\r\n%s%s", TINYSH_PROMPT, buf); fflush(stdout);
     }
 }
@@ -277,6 +294,22 @@ int hw_readdev(const char *dev, unsigned addr, unsigned *val) {
 int hw_writedev(const char *dev, unsigned addr, unsigned val) {
     (void)dev; (void)addr; (void)val;
     return -E_IO;
+}
+
+/* ===================== 命令查找链（宿主无内核命令表） ===================== */
+int kcmd_exists(const char *name) {
+    (void)name;
+    return 0;   /* 宿主没有内核命令表，永远当作“不是内核命令” */
+}
+int kcmd_exec(const char *name, const char *args) {
+    (void)name; (void)args;
+    fprintf(stderr, "kcmd_exec: not available on host build\n");
+    return -1;
+}
+int prog_exec(const char *path, const char *args) {
+    (void)path; (void)args;
+    fprintf(stderr, "prog_exec: not available on host build\n");
+    return -1;
 }
 
 /* ===================== 入口 ===================== */
