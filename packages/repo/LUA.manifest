@@ -3,7 +3,7 @@ version: v0.1
 description: Lua 5.4.7 解释器（REPL 交互 + lua /home/x.lua 脚本模式）
 dependencies: []
 min_compiler: tncr>=0.1
-sha256: 24c908b1aaf430629423ae0c29a9d65f107c53d19ef561d32c5a987899095ba5
+sha256: 8294b5a55b4ab7bcd72a7e9aa0198888ff3f9d8eb9ee28bcd026e7a899a0fab1
 build:
   entry: src/LUA.TNCR
   output: /bin/LUA.TNCR

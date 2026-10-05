@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-05T17:33:02",
+  "generated": "2026-10-06T01:35:07",
   "packages": [
     {
       "name": "CC",
@@ -24,7 +24,7 @@
     {
       "name": "LUA",
       "size": 210584,
-      "sha256": "24c908b1aaf430629423ae0c29a9d65f107c53d19ef561d32c5a987899095ba5"
+      "sha256": "8294b5a55b4ab7bcd72a7e9aa0198888ff3f9d8eb9ee28bcd026e7a899a0fab1"
     },
     {
       "name": "SSHD",
@@ -73,8 +73,8 @@
     },
     {
       "name": "tinysh",
-      "size": 105600,
-      "sha256": "beefecd3fb2fd2eb1fdeb8d2275ce51e77160446d4395b76acba44e93c1aed9c"
+      "size": 179104,
+      "sha256": "4c317df355a489aeea5d6f26447f0a0472c67afc7c83b2f4fa4c8229f567f2bc"
     }
   ]
 }

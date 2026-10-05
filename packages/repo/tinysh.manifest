@@ -1,9 +1,9 @@
 name: tinysh
 version: v0.1
-description: TinyOS Genesis 默认 Shell（登录后自动进入，20 条命令 + 三级命令查找链）
+description: TinyOS Genesis 默认 Shell（登录后自动进入，22 条命令 + pack/run + 三级命令查找链）
 dependencies: []
 min_compiler: tncr>=0.1
-sha256: beefecd3fb2fd2eb1fdeb8d2275ce51e77160446d4395b76acba44e93c1aed9c
+sha256: 4c317df355a489aeea5d6f26447f0a0472c67afc7c83b2f4fa4c8229f567f2bc
 build:
   entry: src/tinysh.TNCR
   output: /bin/tinysh.TNCR

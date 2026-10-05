@@ -1,6 +1,6 @@
 name: SSHD
 version: v0.1
-description: SSH-2 服务端（curve25519-sha256 + ed25519 + aes128-ctr + hmac-sha2-256）
+description: SSH 服务端
 dependencies: []
 min_compiler: tncr>=0.1
 sha256: 2507b0deaf22551b65eb85e276ba30aab949974430d6a876d64549e95eac8d02

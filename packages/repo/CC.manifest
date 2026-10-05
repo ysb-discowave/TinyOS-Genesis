@@ -1,6 +1,6 @@
 name: CC
 version: v0.1
-description: 系统自带的 MiniC 编译器：cc <src.mc> [-o out.TNCR]
+description: C 编译器/工具链前端（tncr 交叉编译）
 dependencies: []
 min_compiler: tncr>=0.1
 sha256: 2cd651fb19122096d1c79a93bd7c131e8b2a143dbac742b8f7f18b8e8ad8f401

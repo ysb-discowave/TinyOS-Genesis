@@ -1,6 +1,6 @@
 name: DESKTOP
 version: v0.1
-description: 桌面入口桩程序（/DESKTOP.TNCR）
+description: 图形文本桌面启动器
 dependencies: []
 min_compiler: tncr>=0.1
 sha256: 02b93608bb92b3c652b45a734de43435c726419faa6f7454bd8ed14714f375da
