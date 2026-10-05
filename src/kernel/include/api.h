@@ -112,6 +112,11 @@ typedef struct tinyos_api {
     void (*sysinfo)(char *buf, int n);
     void (*date)(char *buf, int n);
     void (*version)(char *buf, int n);
+
+    /* ---- Genesis v0.1 pkg 扩展：把内核的 sha256 能力以"文件级"接口导出，
+     * 避免把 sha256_ctx 这种内核结构体泄漏给用户态。返回 0 成功，
+     * out 写入 64 字符小写十六进制 + 结尾 0（需 >=65 字节）。 ---- */
+    int  (*sha256_file)(const char *path, char *out, int n);
 } tinyos_api_t;
 
 /* 用户程序入口（由 TNCR 加载器调用） */
@@ -138,5 +143,6 @@ int  k_dev_write(const char *name, u32 off, const u8 *buf, int n);
 void k_sysinfo(char *buf, int n);
 void k_date(char *buf, int n);
 void k_version(char *buf, int n);
+int  k_sha256_file(const char *path, char *out, int n);
 
 #endif

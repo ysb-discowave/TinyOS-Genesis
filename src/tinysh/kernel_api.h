@@ -40,6 +40,14 @@ long fs_read(const char *path, char *buf, int n);
 int  fs_mkdir(const char *path);
 int  fs_remove(const char *path);
 int  fs_touch(const char *path);
+int  fs_write(const char *path, const char *data, int n);  /* 0=ok, 写/覆盖文件 */
+
+/* ---- 网络：pkg 安装与校验用 ---- */
+/* 对文件算 SHA256（64 字符小写十六进制，out 需 >=65 字节）；返回 0 成功 */
+int  net_sha256_file(const char *path, char *out, int n);
+/* FTP 下载：远端 -> 本地 VFS；返回 0 成功（宿主后端返回错误） */
+int  net_ftp_fetch(const char *host, int port, const char *user,
+                   const char *pass, const char *remote, const char *local);
 
 /* ---- 进程管理 ---- */
 void proc_list_print(void);

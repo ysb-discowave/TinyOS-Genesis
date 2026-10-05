@@ -17,6 +17,7 @@
 #include "io.h"
 #include "libc.h"
 #include "user.h"
+#include "sha256.h"
 
 /* ----------------------------------------------------------------
  * 设备表（devlist / readdev / writedev 用）
@@ -135,4 +136,34 @@ void k_date(char *buf, int n) {
 void k_version(char *buf, int n) {
     snprintf(buf, n,
              "TinyOS Genesis v0.1 | tinysh v0.1 | i386 protected mode\n");
+}
+
+/* ================================================================
+ * pkg 校验：用户态只需要"对整个文件算 sha256"的结果，不需要碰
+ * sha256_ctx 这种内核内部结构。包可能有几百 KB，这里用固定大小缓冲
+ * 分块喂进增量式 sha256，避免把整个文件搬进栈里。
+ * ================================================================ */
+int k_sha256_file(const char *path, char *out, int n) {
+    if (!out || n < 65) return -1;
+    u32 sz = 0;
+    const u8 *d = vfs_read_file(path, &sz);
+    if (!d) return -1;
+    sha256_ctx c;
+    sha256_init(&c);
+    const u32 blk = 4096;
+    u32 off = 0;
+    while (off < sz) {
+        u32 chunk = (sz - off < blk) ? (sz - off) : blk;
+        sha256_update(&c, d + off, chunk);
+        off += chunk;
+    }
+    u8 dig[32];
+    sha256_final(&c, dig);
+    static const char *H = "0123456789abcdef";
+    for (int i = 0; i < 32; i++) {
+        out[i * 2]     = H[(dig[i] >> 4) & 0xF];
+        out[i * 2 + 1] = H[dig[i] & 0xF];
+    }
+    out[64] = 0;
+    return 0;
 }

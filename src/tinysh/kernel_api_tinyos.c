@@ -169,6 +169,14 @@ int fs_touch(const char *path) {
     return (r == 0) ? 0 : -E_IO;
 }
 
+int fs_write(const char *path, const char *data, int n) {
+    if (!g_api) return -E_IO;
+    char abs[512];
+    resolve_path(path, abs, sizeof abs);
+    int r = g_api->file_write(abs, data, n);
+    return (r == 0) ? 0 : -E_IO;
+}
+
 /* ------------------------------------------------------------------ */
 /* 进程                                                                */
 /* ------------------------------------------------------------------ */
@@ -215,6 +223,31 @@ int hw_writedev(const char *dev, unsigned addr, unsigned val) {
     u8 b = (u8)val;
     int r = g_api->dev_write(dev, (u32)addr, &b, 1);
     return (r < 0) ? -E_IO : 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* 网络：pkg 校验与安装                                                */
+/* ------------------------------------------------------------------ */
+int net_sha256_file(const char *path, char *out, int n) {
+    if (!g_api) return -E_IO;
+    char abs[512];
+    resolve_path(path, abs, sizeof abs);
+    return g_api->sha256_file(abs, out, n);  /* 0 = 成功 */
+}
+
+int net_ftp_fetch(const char *host, int port, const char *user,
+                  const char *pass, const char *remote, const char *local) {
+    if (!g_api) return -E_IO;
+    /* FTP 需要网络就绪：第一次调用前做一次探测（net_info 会确保栈已起）。
+     * 之后就直接走内核 ftp_get。 */
+    static int s_probed = 0;
+    if (!s_probed) {
+        if (g_api->net_info) g_api->net_info();
+        s_probed = 1;
+    }
+    char abs_local[512];
+    resolve_path(local, abs_local, sizeof abs_local);
+    return g_api->ftp_get(host, port, user, pass, remote, abs_local);
 }
 
 /* ------------------------------------------------------------------ */

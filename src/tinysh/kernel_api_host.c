@@ -214,6 +214,27 @@ int fs_touch(const char *path) {
     fclose(f);
     return 0;
 }
+int fs_write(const char *path, const char *data, int n) {
+    FILE *f = fopen(path, "wb");
+    if (!f) return -E_IO;
+    if (n > 0 && fwrite(data, 1, (size_t)n, f) != (size_t)n) { fclose(f); return -E_IO; }
+    fclose(f);
+    return 0;
+}
+
+/* ===================== 网络（宿主仅占位，不真正联网） ===================== */
+int net_sha256_file(const char *path, char *out, int n) {
+    (void)path;
+    /* 宿主冒烟测试用：返回固定占位值，真实实现在内核后端 */
+    if (n > 0) out[0] = 0;
+    return -E_IO;   /* not available on host */
+}
+int net_ftp_fetch(const char *host, int port, const char *user,
+                  const char *pass, const char *remote, const char *local) {
+    (void)host; (void)port; (void)user; (void)pass; (void)remote; (void)local;
+    fprintf(stderr, "net_ftp_fetch: not available on host build\n");
+    return -E_IO;
+}
 
 /* ===================== 进程 ===================== */
 void proc_list_print(void) {

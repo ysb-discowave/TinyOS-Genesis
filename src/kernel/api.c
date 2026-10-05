@@ -213,4 +213,7 @@ tinyos_api_t g_api = {
     .sysinfo       = k_sysinfo,
     .date          = k_date,
     .version       = k_version,
+
+    /* ---- Genesis v0.1 pkg 扩展 ---- */
+    .sha256_file   = k_sha256_file,
 };

@@ -190,6 +190,390 @@ static int cmd_exit(int argc, char **argv) {
     g_exit = 1; return E_OK;
 }
 
+/* ===================== pkg —— 软件包管理（用户态，Genesis v0.1） =====================
+ * pkg 是用户态工具：内核只提供基础能力（fs_read/fs_write/sha256_file/ftp_fetch），
+ * 其余逻辑都在这里。所有路径走 kernel_api.h，绝不碰内核符号。 */
+#define PKG_BIN_DIR  "/bin"
+#define PKG_DB_DIR   "/etc/packages.d"
+#define PKG_CONF     "/etc/pkg.conf"
+#define PKG_DEF_SRC  "/home/pkgrepo"
+#define PKG_TMP_DIR  "/tmp"
+
+static int pk_stricmp(const char *a, const char *b) {
+    while (*a && *b) {
+        char ca = *a, cb = *b;
+        if (ca >= 'A' && ca <= 'Z') ca += 32;
+        if (cb >= 'A' && cb <= 'Z') cb += 32;
+        if (ca != cb) return (ca < cb) ? -1 : 1;
+        a++; b++;
+    }
+    if (*a) return 1;
+    if (*b) return -1;
+    return 0;
+}
+
+/* 从 key=value 文本取 key 的值（容忍前导空白） */
+static int pkg_get_kv(const char *buf, int len, const char *key, char *out, int n) {
+    out[0] = 0;
+    int klen = (int)strlen(key);
+    int i = 0;
+    while (i < len) {
+        int line = i;
+        while (i < len && buf[i] != '\n' && buf[i] != '\r' && buf[i] != 0) i++;
+        int ll = i - line;
+        int s = line;
+        while (s < line + ll && (buf[s] == ' ' || buf[s] == '\t')) s++;
+        int avail = (line + ll) - s;
+        if (avail > klen && strncmp(buf + s, key, klen) == 0 && buf[s + klen] == '=') {
+            int v = s + klen + 1;
+            while (v < line + ll && (buf[v] == ' ' || buf[v] == '\t')) v++;
+            int ve = line + ll;
+            while (ve > v && (buf[ve - 1] == ' ' || buf[ve - 1] == '\t')) ve--;
+            int vl = ve - v;
+            if (vl >= n) vl = n - 1;
+            memcpy(out, buf + v, vl); out[vl] = 0;
+            return 0;
+        }
+        while (i < len && (buf[i] == '\n' || buf[i] == '\r' || buf[i] == 0)) i++;
+    }
+    return -1;
+}
+
+/* 读整个文件到 malloc 缓冲，返回字节数（<0 表示错误） */
+static long pkg_read_all(const char *path, char **out) {
+    long cap = 1 << 20;   /* 包上限约 1MB，足够教育用途 */
+    char *buf = (char*)malloc((unsigned long)cap);
+    if (!buf) return -E_IO;
+    long n = fs_read(path, buf, (int)cap);
+    if (n < 0) { free(buf); return n; }
+    *out = buf;
+    return n;
+}
+
+/* 读 /etc/pkg.conf 的一个配置项（缺省值见上方宏） */
+static void pkg_conf_get(const char *key, char *out, int n, const char *def) {
+    static char conf[4096];
+    long r = fs_read(PKG_CONF, conf, (int)sizeof(conf) - 1);
+    if (r < 0) { strncpy(out, def, n - 1); out[n - 1] = 0; return; }
+    conf[r] = 0;
+    if (pkg_get_kv(conf, (int)r, key, out, n) != 0) {
+        strncpy(out, def, n - 1); out[n - 1] = 0;
+    }
+}
+
+static void pkg_print_help(void) {
+    printf("pkg: package manager (v0.1, local + FTP source)\n");
+    printf("usage:\n");
+    printf("  pkg list                 list installed packages\n");
+    printf("  pkg info <name>          show details of a package\n");
+    printf("  pkg verify [name]        verify sha256 of package(s)\n");
+    printf("  pkg install <name>       install from local source dir or FTP\n");
+    printf("  pkg remove <name>        remove an installed package\n");
+    printf("  pkg source [set <path>]  show / set the source dir\n");
+    printf("  pkg help                 this message\n");
+    printf("notes:\n");
+    printf("  install reads <name>.manifest + <name>.tncr from the source dir,\n");
+    printf("  checks sha256, then writes /bin/<name>.TNCR and registers it.\n");
+    printf("  if the local source is missing, it falls back to the FTP source.\n");
+}
+
+static int cmd_pkg(int argc, char **argv) {
+    if (argc < 2 || pk_stricmp(argv[1], "help") == 0) {
+        pkg_print_help();
+        return E_OK;
+    }
+    const char *sub = argv[1];
+
+    if (pk_stricmp(sub, "list") == 0) {
+        fs_entry *e; int n;
+        if (fs_list(PKG_BIN_DIR, &e, &n) != 0) {
+            printf("pkg: cannot list %s\n", PKG_BIN_DIR); return E_IO;
+        }
+        printf("%-16s %-8s %10s\n", "NAME", "VERSION", "SIZE");
+        int cnt = 0;
+        for (int i = 0; i < n; i++) {
+            int nl = (int)strlen(e[i].name);
+            if (e[i].is_dir || nl < 5) continue;
+            if (pk_stricmp(e[i].name + nl - 5, ".TNCR") != 0) continue;
+            char name[64]; int k = 0;
+            for (int j = 0; j < nl - 5 && k < 63; j++) name[k++] = e[i].name[j];
+            name[k] = 0;
+            cnt++;
+            char rec[256]; snprintf(rec, sizeof rec, "%s/%s", PKG_DB_DIR, name);
+            char ver[32]; strcpy(ver, "?");
+            static char rb[4096];
+            long rr = fs_read(rec, rb, (int)sizeof rb - 1);
+            if (rr >= 0) { rb[rr] = 0; pkg_get_kv(rb, (int)rr, "version", ver, sizeof ver); }
+            printf("%-16s %-8s %10ld\n", name, ver, e[i].size);
+        }
+        if (!cnt) printf("(no packages installed)\n");
+        return E_OK;
+    }
+
+    if (pk_stricmp(sub, "info") == 0) {
+        if (argc < 3) { printf("usage: pkg info <name>\n"); return E_ARGC; }
+        const char *name = argv[2];
+        char binp[256], recp[256];
+        snprintf(binp, sizeof binp, "%s/%s.TNCR", PKG_BIN_DIR, name);
+        snprintf(recp, sizeof recp, "%s/%s", PKG_DB_DIR, name);
+        char *bd = 0; long bsz = pkg_read_all(binp, &bd);
+        static char rb[4096]; long rrsz = fs_read(recp, rb, (int)sizeof rb - 1);
+        if (bsz < 0 && rrsz < 0) {
+            printf("pkg: package not found: %s\n", name); return E_NOENT;
+        }
+        printf("package: %s\n", name);
+        if (rrsz >= 0) {
+            rb[rrsz] = 0;
+            char v[32], src[128], sh[65], desc[128];
+            v[0] = src[0] = sh[0] = desc[0] = 0;
+            pkg_get_kv(rb, (int)rrsz, "version", v, sizeof v);
+            pkg_get_kv(rb, (int)rrsz, "source", src, sizeof src);
+            pkg_get_kv(rb, (int)rrsz, "sha256", sh, sizeof sh);
+            pkg_get_kv(rb, (int)rrsz, "desc", desc, sizeof desc);
+            printf("  version : %s\n", v[0] ? v : "?");
+            printf("  source  : %s\n", src[0] ? src : "(unregistered)");
+            printf("  sha256  : %s\n", sh[0] ? sh : "(none)");
+            if (desc[0]) printf("  desc    : %s\n", desc);
+        } else {
+            printf("  version : ?\n");
+            printf("  source  : (unregistered: only raw /bin file present)\n");
+        }
+        if (bsz >= 0) {
+            printf("  size    : %ld bytes\n", bsz);
+            char act[65];
+            if (net_sha256_file(binp, act, sizeof act) == 0) {
+                printf("  sha256  : %s\n", act);
+                static char rb2[4096];
+                long rr2 = fs_read(recp, rb2, (int)sizeof rb2 - 1);
+                char exp[65]; exp[0] = 0;
+                if (rr2 >= 0) { rb2[rr2] = 0; pkg_get_kv(rb2, (int)rr2, "sha256", exp, sizeof exp); }
+                if (exp[0]) printf("  verify  : %s\n",
+                                   pk_stricmp(act, exp) == 0 ? "OK" : "MISMATCH");
+                else printf("  verify  : no recorded sha256\n");
+            } else {
+                printf("  sha256  : (unavailable)\n");
+            }
+            free(bd);
+        } else {
+            printf("  note    : binary %s.TNCR is missing; only metadata present\n", name);
+        }
+        return E_OK;
+    }
+
+    if (pk_stricmp(sub, "verify") == 0) {
+        if (argc >= 3) {
+            const char *name = argv[2];
+            char binp[256]; snprintf(binp, sizeof binp, "%s/%s.TNCR", PKG_BIN_DIR, name);
+            char act[65];
+            if (net_sha256_file(binp, act, sizeof act) != 0) {
+                printf("pkg: cannot read: %s\n", name); return E_NOENT;
+            }
+            char recp[256]; snprintf(recp, sizeof recp, "%s/%s", PKG_DB_DIR, name);
+            static char rb[4096]; long rr = fs_read(recp, rb, (int)sizeof rb - 1);
+            char exp[65]; exp[0] = 0;
+            if (rr >= 0) { rb[rr] = 0; pkg_get_kv(rb, (int)rr, "sha256", exp, sizeof exp); }
+            if (!exp[0]) printf("%-16s no sha256 recorded (actual %s)\n", name, act);
+            else if (pk_stricmp(act, exp) == 0) printf("%-16s OK\n", name);
+            else printf("%-16s MISMATCH (expected %s)\n", name, exp);
+            return E_OK;
+        }
+        fs_entry *e; int n;
+        if (fs_list(PKG_BIN_DIR, &e, &n) != 0) return E_IO;
+        printf("%-16s %s\n", "NAME", "RESULT");
+        int cnt = 0;
+        for (int i = 0; i < n; i++) {
+            int nl = (int)strlen(e[i].name);
+            if (e[i].is_dir || nl < 5) continue;
+            if (pk_stricmp(e[i].name + nl - 5, ".TNCR") != 0) continue;
+            char name[64]; int k = 0;
+            for (int j = 0; j < nl - 5 && k < 63; j++) name[k++] = e[i].name[j];
+            name[k] = 0;
+            char binp[256]; snprintf(binp, sizeof binp, "%s/%s.TNCR", PKG_BIN_DIR, name);
+            char act[65];
+            if (net_sha256_file(binp, act, sizeof act) != 0) continue;
+            char recp[256]; snprintf(recp, sizeof recp, "%s/%s", PKG_DB_DIR, name);
+            static char rb[4096]; long rr = fs_read(recp, rb, (int)sizeof rb - 1);
+            char exp[65]; exp[0] = 0;
+            if (rr >= 0) { rb[rr] = 0; pkg_get_kv(rb, (int)rr, "sha256", exp, sizeof exp); }
+            cnt++;
+            if (!exp[0]) printf("%-16s no sha256 recorded (actual %s)\n", name, act);
+            else if (pk_stricmp(act, exp) == 0) printf("%-16s OK\n", name);
+            else printf("%-16s MISMATCH (expected %s)\n", name, exp);
+        }
+        if (!cnt) printf("(no packages to verify)\n");
+        return E_OK;
+    }
+
+    if (pk_stricmp(sub, "remove") == 0) {
+        if (argc < 3) { printf("usage: pkg remove <name>\n"); return E_ARGC; }
+        const char *name = argv[2];
+        char binp[256], recp[256];
+        snprintf(binp, sizeof binp, "%s/%s.TNCR", PKG_BIN_DIR, name);
+        snprintf(recp, sizeof recp, "%s/%s", PKG_DB_DIR, name);
+        int did = 0;
+        if (fs_remove(binp) == 0) did = 1;
+        if (fs_remove(recp) == 0) did = 1;
+        printf(did ? "pkg: removed %s\n" : "pkg: nothing removed\n", name);
+        return E_OK;
+    }
+
+    if (pk_stricmp(sub, "source") == 0) {
+        const char *r = (argc >= 3) ? argv[2] : "";
+        if (pk_stricmp(r, "set") == 0) {
+            if (argc < 4) { printf("usage: pkg source set <path>\n"); return E_ARGC; }
+            const char *path = argv[3];
+            static char conf[4096];
+            long cr = fs_read(PKG_CONF, conf, (int)sizeof conf - 1);
+            static char newc[4096]; int w = 0;
+            if (cr >= 0) {
+                conf[cr] = 0;
+                int i = 0;
+                while (i < cr) {
+                    int line = i;
+                    while (i < cr && conf[i] != '\n' && conf[i] != '\r' && conf[i] != 0) i++;
+                    int ll = i - line;
+                    int s = line;
+                    while (s < line + ll && (conf[s] == ' ' || conf[s] == '\t')) s++;
+                    int is_src = ((line + ll - s) > 9) &&
+                                 strncmp(conf + s, "sourcedir", 9) == 0 && conf[s + 9] == '=';
+                    if (!is_src) {
+                        memcpy(newc + w, conf + line, ll); w += ll;
+                        if (i < cr && conf[i] != 0) newc[w++] = '\n';
+                    }
+                    while (i < cr && (conf[i] == '\n' || conf[i] == '\r' || conf[i] == 0)) i++;
+                }
+            }
+            int pl = (int)strlen(path);
+            if (w > 0 && newc[w - 1] != '\n') newc[w++] = '\n';
+            if (w + pl + 13 < (int)sizeof newc)
+                w += snprintf(newc + w, sizeof newc - w, "sourcedir=%s\n", path);
+            if (fs_write(PKG_CONF, newc, w) != 0) {
+                printf("pkg: failed to write %s\n", PKG_CONF); return E_IO;
+            }
+            printf("pkg: source set to %s\n", path);
+            return E_OK;
+        }
+        char sd[256], fh[64], fp[16], fu[64], fpass[64], fpath[256];
+        pkg_conf_get("sourcedir", sd, sizeof sd, PKG_DEF_SRC);
+        pkg_conf_get("ftp_host", fh, sizeof fh, "10.0.2.2");
+        pkg_conf_get("ftp_port", fp, sizeof fp, "21");
+        pkg_conf_get("ftp_user", fu, sizeof fu, "anonymous");
+        pkg_conf_get("ftp_pass", fpass, sizeof fpass, "");
+        pkg_conf_get("ftp_path", fpath, sizeof fpath, "/packages/repo");
+        printf("pkg: source dir : %s\n", sd);
+        printf("pkg: ftp source : %s:%s user=%s pass=%s path=%s\n",
+               fh, fp, fu, fpass, fpath);
+        return E_OK;
+    }
+
+    if (pk_stricmp(sub, "install") == 0) {
+        if (argc < 3) {
+            printf("usage: pkg install <name>\n");
+            return E_ARGC;
+        }
+        const char *name = argv[2];
+        char sd[256], fh[64], fp[16], fu[64], fpass[64], fpath[256];
+        pkg_conf_get("sourcedir", sd, sizeof sd, PKG_DEF_SRC);
+        pkg_conf_get("ftp_host", fh, sizeof fh, "10.0.2.2");
+        pkg_conf_get("ftp_port", fp, sizeof fp, "21");
+        pkg_conf_get("ftp_user", fu, sizeof fu, "anonymous");
+        pkg_conf_get("ftp_pass", fpass, sizeof fpass, "");
+        pkg_conf_get("ftp_path", fpath, sizeof fpath, "/packages/repo");
+
+        char mpath[512];
+        char bpath[512];
+        int from_ftp = 0;
+
+        /* 先查本地源目录 */
+        snprintf(mpath, sizeof mpath, "%s/%s.manifest", sd, name);
+        static char md[8192];
+        long mlen = fs_read(mpath, md, (int)sizeof md - 1);
+        if (mlen < 0) {
+            /* 本地没有 -> 试 FTP 源 */
+            fs_mkdir(PKG_TMP_DIR);
+            char rmt_man[512], rmt_tnc[512];
+            int port = atoi(fp);
+            snprintf(rmt_man, sizeof rmt_man, "%s/%s.manifest", fpath, name);
+            snprintf(rmt_tnc, sizeof rmt_tnc, "%s/%s.tncr", fpath, name);
+            snprintf(mpath, sizeof mpath, "%s/pkg_%s.manifest", PKG_TMP_DIR, name);
+            snprintf(bpath, sizeof bpath, "%s/pkg_%s.tncr", PKG_TMP_DIR, name);
+            printf("pkg: trying FTP source %s:%d ...\n", fh, port);
+            if (net_ftp_fetch(fh, port, fu, fpass, rmt_man, mpath) != 0) {
+                printf("pkg: manifest not found locally and FTP fetch failed: %s\n", name);
+                return E_NOENT;
+            }
+            mlen = fs_read(mpath, md, (int)sizeof md - 1);
+            if (mlen < 0) { printf("pkg: failed to read fetched manifest\n"); return E_IO; }
+            if (net_ftp_fetch(fh, port, fu, fpass, rmt_tnc, bpath) != 0) {
+                printf("pkg: failed to fetch package binary via FTP: %s\n", name);
+                fs_remove(mpath);
+                return E_IO;
+            }
+            from_ftp = 1;
+        } else {
+            /* 本地源二进制：优先小写 .tncr，回退大写 .TNCR */
+            snprintf(bpath, sizeof bpath, "%s/%s.tncr", sd, name);
+            static char probe[4];
+            if (fs_read(bpath, probe, 1) < 0)
+                snprintf(bpath, sizeof bpath, "%s/%s.TNCR", sd, name);
+        }
+        md[mlen] = 0;
+
+        /* sha256 校验 */
+        char exp[65]; exp[0] = 0;
+        pkg_get_kv(md, (int)mlen, "sha256", exp, sizeof exp);
+        char act[65];
+        if (net_sha256_file(bpath, act, sizeof act) != 0) {
+            printf("pkg: cannot read package binary: %s\n", bpath);
+            if (from_ftp) { fs_remove(mpath); fs_remove(bpath); }
+            return E_IO;
+        }
+        if (exp[0]) {
+            if (pk_stricmp(act, exp) != 0) {
+                printf("pkg: sha256 mismatch: %s\n", name);
+                printf("  expected %s\n  actual   %s\n", exp, act);
+                if (from_ftp) { fs_remove(mpath); fs_remove(bpath); }
+                return E_IO;
+            }
+        } else {
+            printf("pkg: warning: no sha256 in manifest, skipping verification\n");
+        }
+
+        /* 读二进制内容并写入 /bin */
+        char *bd = 0; long bsz = pkg_read_all(bpath, &bd);
+        if (bsz < 0) {
+            printf("pkg: failed to read package binary: %s\n", bpath);
+            if (from_ftp) { fs_remove(mpath); fs_remove(bpath); }
+            return E_IO;
+        }
+        char binp[256]; snprintf(binp, sizeof binp, "%s/%s.TNCR", PKG_BIN_DIR, name);
+        if (fs_write(binp, bd, (int)bsz) != 0) {
+            printf("pkg: failed to write %s (permission?)\n", binp);
+            free(bd);
+            if (from_ftp) { fs_remove(mpath); fs_remove(bpath); }
+            return E_PERM;
+        }
+        free(bd);
+
+        /* 登记到 /etc/packages.d/<name> */
+        fs_mkdir(PKG_DB_DIR);
+        char recp[256]; snprintf(recp, sizeof recp, "%s/%s", PKG_DB_DIR, name);
+        if (fs_write(recp, md, (int)mlen) != 0)
+            printf("pkg: warning: installed but failed to write record %s\n", recp);
+
+        if (from_ftp) { fs_remove(mpath); fs_remove(bpath); }
+
+        char ver[32]; ver[0] = 0;
+        pkg_get_kv(md, (int)mlen, "version", ver, sizeof ver);
+        printf("pkg: installed %s (version %s, %ld bytes) -> %s\n",
+               name, ver[0] ? ver : "?", bsz, binp);
+        return E_OK;
+    }
+
+    printf("pkg: unknown subcommand: %s (try 'pkg help')\n", sub);
+    return E_OK;
+}
+
 /* ===================== 命令注册表 =====================
  * 注意：desc / usage 是会打到 VGA 文本模式（CP437 字形表）上的用户可见文案，
  * 必须纯 ASCII —— 汉字会乱码且占 3 格把整行顶出 80 列。 */
@@ -213,6 +597,7 @@ static const cmd_t g_cmds[] = {
     {"echo",     cmd_echo,     "echo <text>",               "print text"},
     {"clear",    cmd_clear,    "clear",                     "clear the screen"},
     {"exit",     cmd_exit,     "exit",                      "leave the tinysh session"},
+    {"pkg",      cmd_pkg,      "pkg <subcommand>",          "package manager (list/info/verify/install/remove/source)"},
 };
 
 const cmd_t *cmd_find(const char *name) {
