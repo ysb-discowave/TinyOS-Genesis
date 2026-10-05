@@ -50,8 +50,8 @@
           <p class="lede" data-zh="从零手写的裸机 x86 操作系统 —— 可引导、可运行、真正能在真机与 QEMU 上跑起来。内核、引导器、用户程序全部自己造。"
                      data-en="A from-scratch bare-metal x86 operating system — bootable, runnable, and genuinely running on real hardware and QEMU. Kernel, bootloader and user programs, all built from the ground up.">从零手写的裸机 x86 操作系统 —— 可引导、可运行、真正能在真机与 QEMU 上跑起来。内核、引导器、用户程序全部自己造。</p>
           <div class="cta-row">
-            <a class="btn btn-primary" href="#demo" data-zh="观看终端演示" data-en="View terminal demo">观看终端演示</a>
-            <a class="btn btn-ghost" href="#start" data-zh="快速上手" data-en="Quick start">快速上手</a>
+            <a class="btn btn-primary" href="#start" data-zh="快速上手" data-en="Quick start">快速上手</a>
+            <a class="btn btn-ghost" href="#intro" data-zh="产品介绍" data-en="Overview">产品介绍</a>
           </div>
           <ul class="hero-facts" aria-label="关键事实">
             <li><strong>i386</strong> <span data-zh="保护模式" data-en="protected mode">保护模式</span></li>
@@ -74,7 +74,6 @@
       <nav class="section-toc wrap" aria-label="本页区块导航">
         <a href="#intro" data-zh="产品介绍" data-en="Overview">产品介绍</a>
         <a href="#size" data-zh="体积" data-en="Size">体积</a>
-        <a href="#demo" data-zh="演示" data-en="Demo">演示</a>
         <a href="#matrix" data-zh="能力" data-en="Capabilities">能力</a>
         <a href="#arch" data-zh="架构" data-en="Architecture">架构</a>
         <a href="#stack" data-zh="技术栈" data-en="Stack">技术栈</a>
@@ -170,30 +169,6 @@
       </div>
     </section>
 
-    <!-- DEMO -->
-    <section id="demo" class="section section-term" aria-labelledby="demo-title">
-      <div class="wrap">
-        <h2 id="demo-title" data-zh="终端演示" data-en="Terminal demo">终端演示</h2>
-        <p class="section-lead" data-zh="下面是 tinysh 在 QEMU 串口里的真实交互。逐字回放由脚本驱动，无需人工点击。"
-                               data-en="Below is a real tinysh session over the QEMU serial port. The playback is script-driven — no manual clicks.">下面是 tinysh 在 QEMU 串口里的真实交互。逐字回放由脚本驱动，无需人工点击。</p>
-
-        <div class="term" role="img" aria-label="tinysh 终端会话实录">
-          <div class="term-bar" aria-hidden="true">
-            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-            <span class="term-title">tinysh — QEMU serial</span>
-          </div>
-          <pre id="demo" class="term-body" tabindex="0" aria-label="终端输出（打字机效果由 app.js 填充）"></pre>
-        </div>
-
-        <div class="callout" role="note">
-          <h3 data-zh="为什么界面文案一律是英文？" data-en="Why is all on-screen text English?">为什么界面文案一律是英文？</h3>
-          <p data-zh="图形桌面运行在 VGA 80×25 文本模式，字形表是 CP437（IBM PC 字符集），根本没有汉字字形；而且一个汉字要占 3 个字符格，会直接把一行顶出 80 列。这是有说服力的工程约束，不是偷懒。"
-             data-en="The desktop runs in VGA 80×25 text mode using the CP437 (IBM PC) glyph table, which has no Chinese glyphs; and a single Chinese character takes 3 cells, which would push a line past the 80-column limit. That is a real engineering constraint, not laziness.">图形桌面运行在 VGA 80×25 文本模式，字形表是 CP437（IBM PC 字符集），根本没有汉字字形；而且一个汉字要占 3 个字符格，会直接把一行顶出 80 列。这是有说服力的工程约束，不是偷懒。</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- MATRIX -->
     <section id="matrix" class="section" aria-labelledby="matrix-title">
       <div class="wrap">
         <h2 id="matrix-title" data-zh="能力矩阵" data-en="Capability matrix">能力矩阵</h2>
