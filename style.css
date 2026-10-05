@@ -127,6 +127,8 @@ a:hover { text-decoration: underline; }
 .btn-primary:hover { text-decoration: none; filter: brightness(1.08); }
 .btn-ghost { border-color: var(--line); color: var(--text); }
 .btn-ghost:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+.btn-bilibili { border-color: #FB7299; color: #FB7299; background: transparent; }
+.btn-bilibili:hover { border-color: #FB7299; color: #fff; background: #FB7299; text-decoration: none; }
 
 .hero-facts { display: flex; gap: 22px; flex-wrap: wrap; list-style: none; padding: 0; margin: 0; }
 .hero-facts li { display: flex; flex-direction: column; }
