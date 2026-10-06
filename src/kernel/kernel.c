@@ -17,6 +17,7 @@
 #include "user.h"
 #include "libc.h"
 #include "net/net.h"
+#include "net/nic.h"
 
 extern u8 romfs_data[];
 extern u32 romfs_len;
@@ -149,11 +150,14 @@ void kernel_main(u32 mb_info) {
     if (g_net_mac[0]) {
         char ips[20], gws[20];
         ip_to_str(g_ip, ips); ip_to_str(g_gw, gws);
-        kprintf("[net ] e1000 NIC: MAC %02X:%02X:%02X:%02X:%02X:%02X  IP %s/24 GW %s\n",
+        const char *nn = nic_name();
+        const char *mm = nic_model();
+        kprintf("[net ] NIC %s%s%s: MAC %02X:%02X:%02X:%02X:%02X:%02X  IP %s/24 GW %s\n",
+                nn ? nn : "?", (mm && mm[0]) ? " " : "", (mm && mm[0]) ? mm : "",
                 g_net_mac[0], g_net_mac[1], g_net_mac[2],
                 g_net_mac[3], g_net_mac[4], g_net_mac[5], ips, gws);
     } else {
-        kprintf("[net ] no e1000 NIC found (networking unavailable)\n");
+        kprintf("[net ] no supported NIC found (networking unavailable)\n");
     }
 
     /* 开机自动启动安装向导：

@@ -1,15 +1,69 @@
 #include "e1000.h"
-#include "io.h"
+#include "nic.h"
 #include "mm.h"
 #include "libc.h"
 #include "console.h"
 
-/* 诊断开关：默认 0。置 1 可在串口打印网卡初始化/发送的原始寄存器值，
- * 用来回答"帧到底有没有交给硬件"这类问题。 */
+/* 诊断开关：默认 0。置 1 可在串口打印网卡初始化/发送的原始寄存器值。 */
 #define E1000_DEBUG 0
 
+/* Intel 的 PCI vendor id */
 #define E1000_VEND 0x8086
-#define E1000_DEVID 0x100E   /* 82540EM，QEMU 默认 */
+
+/* 本驱动只覆盖**传统 e1000**（8254x/8255x + ICH8/ICH9 集成 82562/63/64）。
+ * 这些型号共用同一套 legacy 描述符 + 寄存器布局。
+ *
+ * ⚠️ 8257x/8256x-PCIe 系列（82571/72/73/74/75/76/77/78/79/83/86…）虽然同属
+ * Intel、同 vendor id 0x8086，但寄存器布局与 MAC 复位流程**不兼容**，
+ * 归 e1000e 驱动管（见 e1000e.c）。两个驱动的 device id 列表必须互不重叠，
+ * 否则先注册的 e1000 会抢走 e1000e 的设备并初始化失败。 */
+static const u16 g_e1000_devids[] = {
+    0x1002, /*82540C*/ 0x1004, /*82544GC*/ 0x1008, /*82544GF*/ 0x1009, /*82544GA*/
+    0x100E, /*82540EM*/ 0x100F, /*82545EM*/ 0x1010, /*82542*/ 0x1012, /*82543*/
+    0x1013, /*82544*/  0x1014, /*82545EM*/ 0x1015, /*82545EM*/ 0x1016, /*82545EM*/
+    0x1026, /*82546*/  0x1027, /*82547*/  0x1028, /*82548*/  0x1029, /*82549*/
+    0x102A, /*82546D*/ 0x102B, /*82549B*/ 0x102C, /*82549*/  0x102D, /*82549*/
+    0x102E, /*82549*/  0x1032, /*82564L*/ 0x1038, /*82562*/  0x1048, /*82563*/
+    0x1A0C, /*82550*/  0x1A0D, /*82551*/
+    0x10D8, /*82563*/  0x10D9, /*82562*/  0x10E6, /*82564*/
+    0
+};
+
+/* device id -> 型号名，让 net info 能报出具体型号 */
+static const char *e1000_model_of(u16 did) {
+    switch (did) {
+    case 0x1002: return "82540C";
+    case 0x1004: return "82544GC";
+    case 0x1008: return "82544GF";
+    case 0x1009: return "82544GA";
+    case 0x100E: return "82540EM";
+    case 0x100F: return "82545EM";
+    case 0x1010: return "82542";
+    case 0x1012: return "82543";
+    case 0x1013: return "82544";
+    case 0x1014: return "82545EM";
+    case 0x1015: return "82545EM";
+    case 0x1016: return "82545EM";
+    case 0x1026: return "82546";
+    case 0x1027: return "82547";
+    case 0x1028: return "82548";
+    case 0x1029: return "82549";
+    case 0x102A: return "82546D";
+    case 0x102B: return "82549B";
+    case 0x102C: return "82549";
+    case 0x102D: return "82549";
+    case 0x102E: return "82549";
+    case 0x1032: return "82564L";
+    case 0x1038: return "82562";
+    case 0x1048: return "82563";
+    case 0x1A0C: return "82550";
+    case 0x1A0D: return "82551";
+    case 0x10D8: return "82563";
+    case 0x10D9: return "82562";
+    case 0x10E6: return "82564";
+    default:     return "e1000";
+    }
+}
 
 /* 寄存器偏移 */
 #define REG_CTRL    0x0000
@@ -55,55 +109,34 @@ typedef struct {
 
 static volatile u32 *mmio = NULL;
 static u8 g_mac[6] = {0x52,0x54,0x00,0x12,0x34,0x56};
+/* 型号缓冲：init() 命中具体 device id 后写入，net info 读它 */
+static char g_model[NIC_MODEL_MAX] = "e1000";
 
 static desc_t *tx_descs, *rx_descs;
 static u8 *tx_bufs[TX_DESCS], *rx_bufs[RX_DESCS];
 static int tx_next = 0, rx_next = 0;
 
-static u32 pci_read(u8 bus, u8 dev, u8 fn, u8 off) {
-    u32 addr = 0x80000000u | (bus << 16) | (dev << 11) | (fn << 8) | (off & 0xFC);
-    outl(0xCF8, addr);
-    return inl(0xCFC);
-}
-static void pci_write(u8 bus, u8 dev, u8 fn, u8 off, u32 val) {
-    u32 addr = 0x80000000u | (bus << 16) | (dev << 11) | (fn << 8) | (off & 0xFC);
-    outl(0xCF8, addr);
-    outl(0xCFC, val);
-}
-
 static u32 rd(u32 r) { return mmio[r/4]; }
 static void wr(u32 r, u32 v) { mmio[r/4] = v; }
 
-int e1000_init(void) {
-    /* 扫描 PCI 总线找 e1000。
-     * 曾经的坑：外层 for 的 bus++ 在内层 break 之后依然会执行，
-     * 于是拿着已经自增过的 bus 去读 BAR，读到 0xFFFFFFFF（不存在），
-     * 结果网卡 MMIO 指向 0xFFFFFFF0（绕回物理内存低端），
-     * 寄存器读写全是垃圾——表现为"能探测到网卡但一帧也发不出去"。
-     * 因此这里把命中的 bus/dev 单独存下来，不再复用循环变量。 */
-    int found = 0, fbus = 0, fdev = 0;
-    for (int b = 0; b < 8 && !found; b++)
-        for (int d = 0; d < 32; d++) {
-            u32 vid = pci_read((u8)b, (u8)d, 0, 0);
-            if ((vid & 0xFFFF) != E1000_VEND) continue;
-            u32 did = (pci_read((u8)b, (u8)d, 0, 0) >> 16) & 0xFFFF;
-#if E1000_DEBUG
-            kprintf("[e1000] scan bus=%d dev=%d vid=%04X did=%04X\n", (u32)b, (u32)d,
-                    (u32)(vid & 0xFFFF), (u32)did);
-#endif
-            if (did == E1000_DEVID) { found = 1; fbus = b; fdev = d; break; }
-        }
-    if (!found) return -1;
-    u32 bar0raw = pci_read((u8)fbus, (u8)fdev, 0, 0x10);
-    u32 bar0 = bar0raw & 0xFFFFFFF0;
+static int e1000_init(void) {
+    u8 bus, dev, fn;
+    if (pci_find(E1000_VEND, g_e1000_devids, &bus, &dev, &fn) != 0) return -1;
+
+    u16 did = (u16)((pci_cfg_read(bus, dev, fn, 0x00) >> 16) & 0xFFFF);
+    const char *m = e1000_model_of(did);
+    strncpy(g_model, m, NIC_MODEL_MAX - 1);
+    g_model[NIC_MODEL_MAX - 1] = 0;
+
+    /* 内存 BAR：本驱动假定 BAR0 是 32bit 内存 BAR（内核未开分页，直接用物理地址） */
+    if (!pci_bar_is_mem(bus, dev, fn, 0)) return -1;
+    u32 bar0 = pci_bar(bus, dev, fn, 0);
     if (!bar0) return -1;
     mmio = (volatile u32*)(u32)bar0;
-    /* 使能总线主控 */
-    u32 cmd = pci_read((u8)fbus, (u8)fdev, 0, 0x04);
-    pci_write((u8)fbus, (u8)fdev, 0, 0x04, cmd | 0x06);
+    pci_enable(bus, dev, fn);
 #if E1000_DEBUG
-    kprintf("[e1000] found at bus=%d dev=%d bar0raw=0x%08X cmd=0x%04X\n",
-            (u32)fbus, (u32)fdev, bar0raw, (u32)(cmd & 0xFFFF));
+    kprintf("[e1000] %s at bus=%d dev=%d fn=%d bar0=0x%08X\n",
+            g_model, (u32)bus, (u32)dev, (u32)fn, bar0);
 #endif
 
     /* 软复位 */
@@ -113,6 +146,7 @@ int e1000_init(void) {
     /* 分配描述符环与缓冲 */
     tx_descs = (desc_t*)kzalloc(sizeof(desc_t) * TX_DESCS);
     rx_descs = (desc_t*)kzalloc(sizeof(desc_t) * RX_DESCS);
+    if (!tx_descs || !rx_descs) return -1;
     for (int i = 0; i < TX_DESCS; i++) { tx_bufs[i] = (u8*)kzalloc(BUF_SIZE); tx_descs[i].addr = (u64)(u32)tx_bufs[i]; }
     for (int i = 0; i < RX_DESCS; i++) { rx_bufs[i] = (u8*)kzalloc(BUF_SIZE); rx_descs[i].addr = (u64)(u32)rx_bufs[i]; rx_descs[i].status = 0; }
 
@@ -133,14 +167,8 @@ int e1000_init(void) {
     wr(REG_TCTL, TCTL_EN | TCTL_PSP | (0x10 << 4) | (0x40 << 12));
     wr(REG_TIPG, 0x0060200A);
 
-    /* 读取 MAC（RAH/RAL 已含 QEMU 分配的默认地址） */
+    /* 读取 MAC（RAH/RAL 已含 QEMU/固件写的默认地址） */
     u32 ral = rd(0x5400), rah = rd(0x5404);
-#if E1000_DEBUG
-    kprintf("[e1000] bar0=0x%08X status=0x%08X ctrl=0x%08X tctl=0x%08X rctl=0x%08X\n",
-            bar0, rd(REG_STATUS), rd(REG_CTRL), rd(REG_TCTL), rd(REG_RCTRL));
-    kprintf("[e1000] ral=0x%08X rah=0x%08X rx=0x%08X tx=0x%08X\n",
-            ral, rah, (u32)(u32)rx_descs, (u32)(u32)tx_descs);
-#endif
     u8 m0 = ral & 0xFF, m1 = (ral>>8)&0xFF, m2 = (ral>>16)&0xFF, m3 = (ral>>24)&0xFF;
     u8 m4 = rah & 0xFF, m5 = (rah>>8)&0xFF;
     u32 acc = (u32)m0|((u32)m1<<8)|((u32)m2<<16)|((u32)m3<<24);
@@ -150,9 +178,9 @@ int e1000_init(void) {
     return 0;
 }
 
-void e1000_get_mac(u8 mac[6]) { memcpy(mac, g_mac, 6); }
+static void e1000_get_mac(u8 mac[6]) { memcpy(mac, g_mac, 6); }
 
-void e1000_send(const u8 *frame, u32 len) {
+static void e1000_send(const u8 *frame, u32 len) {
     if (!mmio || len > BUF_SIZE) return;
     int i = tx_next;
     memcpy(tx_bufs[i], frame, len);
@@ -161,13 +189,9 @@ void e1000_send(const u8 *frame, u32 len) {
     tx_descs[i].status = 0;
     tx_next = (tx_next + 1) % TX_DESCS;
     wr(REG_TDT, tx_next);
-#if E1000_DEBUG
-    kprintf("[e1000] TX d=%d len=%u cmd=0x%02X buf=0x%08X tdt=%d\n",
-            i, (u32)len, (u32)tx_descs[i].cmd, (u32)(u32)tx_bufs[i], tx_next);
-#endif
 }
 
-int e1000_poll(void (*cb)(const u8 *frame, u32 len)) {
+static int e1000_poll(void (*cb)(const u8 *frame, u32 len)) {
     int got = 0;
     while (rx_descs[rx_next].status & 0x01) {
         u16 len = rx_descs[rx_next].len;
@@ -180,3 +204,10 @@ int e1000_poll(void (*cb)(const u8 *frame, u32 len)) {
     }
     return got;
 }
+
+static const nic_driver_t g_e1000_drv = {
+    "e1000", g_model, E1000_VEND, g_e1000_devids,
+    e1000_init, e1000_send, e1000_poll, e1000_get_mac
+};
+
+void e1000_register(void) { nic_register(&g_e1000_drv); }

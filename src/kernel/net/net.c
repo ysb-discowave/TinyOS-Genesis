@@ -1,5 +1,10 @@
 #include "net.h"
+#include "nic.h"
 #include "e1000.h"
+#include "e1000e.h"
+#include "i8255x.h"
+#include "rtl8139.h"
+#include "virtio_net.h"
 #include "ftp.h"
 #include "smb.h"
 #include "libc.h"
@@ -129,7 +134,7 @@ void eth_send(const u8 dst[6], u16 ethertype, const u8 *payload, u32 len) {
     memcpy(f, dst, 6); memcpy(f + 6, g_net_mac, 6);
     *(u16*)&f[12] = htons(ethertype);
     memcpy(f + 14, payload, len);
-    e1000_send(f, len + 14);
+    nic_send(f, len + 14);
     kfree(f);
 }
 
@@ -667,12 +672,20 @@ static void frame_input(const u8 *frame, u32 len) {
     else if (et == ETH_TYPE_IP) ip_input(frame + 14, len - 14);
 }
 void net_init(void) {
-    if (e1000_init() != 0) { g_up = 0; return; }
-    e1000_get_mac(g_net_mac);
+    /* 注册所有已编译进来的网卡驱动，顺序即优先级。
+     * Intel 系排在前面（覆盖最广）， virtio 放最后兜底虚拟化场景。 */
+    e1000_register();
+    e1000e_register();
+    i8255x_register();
+    rtl8139_register();
+    virtio_net_register();
+
+    if (nic_init() != 0) { g_up = 0; return; }
+    nic_get_mac(g_net_mac);
     g_up = 1;
 }
 int net_up(void) { return g_up; }
-void net_poll(void) { if (g_up) e1000_poll(frame_input); }
+void net_poll(void) { if (g_up) nic_poll(frame_input); }
 void net_poll_all(void) {
     net_poll();
     ftp_server_poll();
@@ -681,13 +694,19 @@ void net_poll_all(void) {
 void net_info(void) {
     char ip[20], gw[20];
     ip_to_str(g_ip, ip); ip_to_str(g_gw, gw);
-    if (!g_up) { kprintf("network: disabled (no e1000 NIC found)\n"); return; }
-    kprintf("network: e1000 enabled\n");
+    if (!g_up) { kprintf("network: disabled (no supported NIC found)\n"); return; }
+    const char *nm = nic_name();
+    const char *md = nic_model();
+    kprintf("network: %s enabled", nm ? nm : "?");
+    if (md && md[0]) kprintf(" (%s)", md);
+    kprintf("\n");
     kprintf("  MAC  %02X:%02X:%02X:%02X:%02X:%02X\n",
             g_net_mac[0],g_net_mac[1],g_net_mac[2],g_net_mac[3],g_net_mac[4],g_net_mac[5]);
     kprintf("  IP   %s/24    gateway %s\n", ip, gw);
     char dns[20]; ip_to_str(g_dns, dns);
     kprintf("  DNS  %s\n", dns);
+    kprintf("  Drivers compiled in:\n");
+    nic_list();
     int any = 0;
     for (int i = 0; i < 16; i++) if (g_arp[i].valid) {
         if (!any) { kprintf("  ARP cache:\n"); any = 1; }
