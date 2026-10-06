@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="TinyOS Genesis v0.1 package manager: the pkg command is now implemented (7 subcommands, SHA256 verification), installing from a local source dir; the still-romfs-builtin route, manifest format, the 4 packages in the repo, and the honest list of what remains unimplemented (remote HTTP/HTTPS download, dependency resolution)." />
+  <meta name="description" content="TinyOS Genesis v0.1 package manager: the pkg command is now implemented (7 subcommands, SHA256 verification), installing from a local source dir; the still-romfs-builtin route, manifest format, the 16 packages in the repo, and the honest list of what remains unimplemented (remote HTTP/HTTPS download, dependency resolution)." />
   <title>TinyOS Genesis v0.1 · 软件包管理器 / Packages</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -497,8 +497,8 @@ sourcedir /home/pkgrepo</code></pre>
     <section id="inventory" class="section" aria-labelledby="inventory-title">
       <div class="wrap">
         <h2 id="inventory-title" data-zh="软件包列表：点开看详情" data-en="Package list: click for details">软件包列表：点开看详情</h2>
-        <p class="section-lead" data-zh="远程仓库 packages/repo/ 目前有 15 个带真实产物与真实 sha256 的包，Worker 镜像对外提供它们；点开任意条目可看 manifest 字段、产物体积、校验和与逐文件清单。下面的数据直接来自仓库里的 manifest 与构建产物，不是手写的介绍文字。"
-                              data-en="The remote repository packages/repo/ currently holds 15 packages with real artifacts and real sha256 digests, all served by the Worker mirror; click any entry to expand its manifest fields, artifact size, checksum and per-file listing. The data below comes straight from the manifests and build artifacts in the repository, not from hand-written marketing copy.">远程仓库 packages/repo/ 目前有 15 个带真实产物与真实 sha256 的包，Worker 镜像对外提供它们；点开任意条目可看 manifest 字段、产物体积、校验和与逐文件清单。下面的数据直接来自仓库里的 manifest 与构建产物，不是手写的介绍文字。</p>
+        <p class="section-lead" data-zh="远程仓库 packages/repo/ 目前有 16 个带真实产物与真实 sha256 的包，Worker 镜像对外提供它们；点开任意条目可看 manifest 字段、产物体积、校验和与逐文件清单。下面的数据直接来自仓库里的 manifest 与构建产物，不是手写的介绍文字。"
+                              data-en="The remote repository packages/repo/ currently holds 16 packages with real artifacts and real sha256 digests, all served by the Worker mirror; click any entry to expand its manifest fields, artifact size, checksum and per-file listing. The data below comes straight from the manifests and build artifacts in the repository, not from hand-written marketing copy.">远程仓库 packages/repo/ 目前有 16 个带真实产物与真实 sha256 的包，Worker 镜像对外提供它们；点开任意条目可看 manifest 字段、产物体积、校验和与逐文件清单。下面的数据直接来自仓库里的 manifest 与构建产物，不是手写的介绍文字。</p>
         <p class="chart-note" data-zh="提示：每次重新构建后跑 python tools/sync_repo.py 刷新本目录（复制产物 + 重算 sha256 + 重生成 INDEX.json），再跑 python tools/sync_site_facts.py 同步本页数字。两道校验都会在不一致时直接报错。"
                            data-en="Note: after every rebuild, run python tools/sync_repo.py to refresh this directory (copy artifacts, recompute sha256, regenerate INDEX.json), then python tools/sync_site_facts.py to sync the numbers on this page. Both steps fail loudly on any mismatch.">提示：每次重新构建后跑 python tools/sync_repo.py 刷新本目录（复制产物 + 重算 sha256 + 重生成 INDEX.json），再跑 python tools/sync_site_facts.py 同步本页数字。两道校验都会在不一致时直接报错。</p>
 

@@ -351,6 +351,18 @@ patch("packages.html", [
     ("%s" % OLD_SIZE_S, SIZE_S),
 ])
 
+# 包数量：随 packages/repo/ 里的真实包数变化（SSHCLIENT 加入后从 15 变 16，后续再加照此递增）。
+# 用正则替换，无论当前写的是几都能纠正到 NPKG，避免再次写死。
+_pkg_html = os.path.join(ROOT, "packages.html")
+if os.path.isfile(_pkg_html):
+    _s = open(_pkg_html, encoding="utf-8").read()
+    _s2 = re.sub(r'目前有 \d+ 个带真实产物', '目前有 %d 个带真实产物' % NPKG, _s)
+    _s2 = re.sub(r'currently holds \d+ packages', 'currently holds %d packages' % NPKG, _s2)
+    _s2 = re.sub(r'the \d+ packages in the repo', 'the %d packages in the repo' % NPKG, _s2)
+    if _s2 != _s:
+        open(_pkg_html, "w", encoding="utf-8").write(_s2)
+        print("  packages.html    package count synced to %d" % NPKG)
+
 # ---- pkgcat.js ----
 patch("pkgcat.js", [
     ("size: %s," % OLD_SIZE_S, "size: %s," % SIZE_S),
