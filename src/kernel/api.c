@@ -45,6 +45,9 @@ static void k_sock_close(int h) { sock_close(h); }
 static int  k_sock_closed(int h) { return sock_closed(h); }
 static int  k_sock_readable(int h) { return sock_readable(h); }
 static u32  k_sock_local_ip(void) { return sock_local_ip(); }
+static int  k_sock_connect(u32 ip, u16 port, int timeout_ms) {
+    return sock_connect(ip, port, timeout_ms);
+}
 
 /* ---- 用户 / 口令 ---- */
 static int  k_user_verify(const char *n, const char *p) { return user_verify(n, p); }
@@ -173,6 +176,7 @@ tinyos_api_t g_api = {
     .sock_closed = k_sock_closed,
     .sock_readable = k_sock_readable,
     .sock_local_ip = k_sock_local_ip,
+    .sock_connect  = k_sock_connect,
 
     .user_verify = k_user_verify,
     .user_uid = k_user_uid,

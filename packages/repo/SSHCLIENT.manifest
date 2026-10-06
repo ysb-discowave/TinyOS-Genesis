@@ -1,0 +1,10 @@
+name: SSHCLIENT
+version: v0.1
+description: SSH-2 客户端（主动连外部服务器；无 pty，用 exec 跑命令）
+dependencies: []
+min_compiler: tncr>=0.1
+sha256: da04c31318bbc970bbeba7844cc8225d8ad6511303fe8957bb04efaaffe625e3
+build:
+  entry: src/SSHCLIENT.TNCR
+  output: /bin/SSHCLIENT.TNCR
+  cmd: '# 由 tools/build_users.py 交叉编译并打进 romfs'

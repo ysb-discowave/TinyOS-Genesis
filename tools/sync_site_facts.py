@@ -136,6 +136,12 @@ PKG_META = {
         usageZh="安装后由 tinysh 启动；与内核的 passwd 账户体系配合。",
         usageEn="Started from tinysh once installed; it works with the kernel passwd account system.",
         sources=["tools/compiler/examples/sshd.c"]),
+    "SSHCLIENT": dict(
+        zh="SSH-2 客户端：TinyOS 主动连外部 SSH 服务器。传输层与服务端同构（curve25519-sha256 ECDH、AES-128-CTR、HMAC-SHA2-256），走 ssh-userauth 的 password 认证。内核无 pty，因此不申请伪终端，只能用 exec 跑命令或简易逐行 shell。",
+        en="An SSH-2 client: TinyOS dials out to an external SSH server. The transport mirrors the server side (curve25519-sha256 ECDH, AES-128-CTR, HMAC-SHA2-256) and authenticates via ssh-userauth password. The kernel has no pty, so it never requests a pseudo-terminal and can only run commands via exec or a simple line-based shell.",
+        usageZh="SSHCLIENT <ip> [port] [command...] —— 给了 command 就跑完退出，不给就进简易交互 shell。主机只接受点分十进制 IPv4（内核无 DNS）。",
+        usageEn="SSHCLIENT <ip> [port] [command...] — with a command it runs and exits; without one it drops into a simple interactive shell. Hosts must be dotted-quad IPv4 (the kernel has no DNS).",
+        sources=["tools/compiler/examples/ssh_client.c", "tools/compiler/sshd_crypto.h"]),
     "JVM": dict(
         zh="JVM 运行时。产物由外部 TinyOS-JVM 项目的 build.py 生成，再打进 romfs。",
         en="A JVM runtime. The artifact is produced by the external TinyOS-JVM project's build.py and then embedded into romfs.",

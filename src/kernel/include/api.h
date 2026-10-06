@@ -150,6 +150,12 @@ typedef struct tinyos_api {
      * 返回 0 隧道可用；HTTP_E_NOTLS 表示隧道通了但内核缺 TLS 栈。 */
     int  (*http_tunnel)(const char *proxy_host, int proxy_port,
                         const char *host, int port);
+
+    /* ---- Genesis v0.1 client TCP 扩展：主动发起连接（SSH 客户端等用）----
+     * 复用内核 net 层的 tcp_connect + tcp_wait_established：发 SYN 后立即
+     * 返回，之后轮询直到对端回 SYN-ACK 完成三次握手（或超时）。
+     * 返回 >=0 的句柄（与 sock_accept 同句柄空间），失败返回 -1。 */
+    int  (*sock_connect)(u32 ip, u16 port, int timeout_ms);
 } tinyos_api_t;
 
 /* 用户程序入口（由 TNCR 加载器调用） */

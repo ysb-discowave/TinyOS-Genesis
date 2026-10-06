@@ -23,7 +23,7 @@ OUT  = os.path.join(os.environ.get("TINYOS_OUT",
              os.path.join(os.path.expanduser("~"), "Desktop", "tinyYY")), "tncr")
 
 # 正式发布的包（顺序即 INDEX.json 里的顺序）
-PUBLISH = ["CC", "DESKTOP", "EDIT", "JVM", "LUA", "SSHD",
+PUBLISH = ["CC", "DESKTOP", "EDIT", "JVM", "LUA", "SSHD", "SSHCLIENT",
            "basic_demo", "count", "cpp_demo", "gui_demo", "hello",
            "minic_demo", "net_demo", "tiny_demo", "tinysh"]
 
@@ -32,7 +32,8 @@ DESCRIPTIONS = {
     "LUA":    "Lua 5.4.7 解释器（REPL 交互 + lua /home/x.lua 脚本模式）",
     "CC":     "C 编译器/工具链前端（tncr 交叉编译）",
     "EDIT":   "文本编辑器",
-    "SSHD":   "SSH 服务端",
+    "SSHD":   "SSH-2 服务端（curve25519-sha256 + AES-128-CTR + HMAC-SHA2-256）",
+    "SSHCLIENT": "SSH-2 客户端（主动连外部服务器；无 pty，用 exec 跑命令）",
     "JVM":    "JVM 运行时",
     "DESKTOP": "图形文本桌面启动器",
     "hello":  "最小化 C 程序，验证 C 工具链与 TNCR 运行时",

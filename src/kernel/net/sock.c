@@ -33,6 +33,20 @@ int sock_listen(int port) {
     return h;
 }
 
+int sock_connect(u32 ip, u16 port, int timeout_ms) {
+    if (ip == 0 || port <= 0 || port > 65535) return -1;
+    if (timeout_ms < 0) timeout_ms = 8000;
+    tcp_conn_t *c = tcp_connect(ip, port);
+    if (!c) return -1;
+    if (tcp_wait_established(c, (u32)timeout_ms) != 0) {
+        tcp_close(c);
+        return -1;
+    }
+    int h = sock_alloc(c, 0);
+    if (h < 0) { tcp_close(c); return -1; }
+    return h;
+}
+
 int sock_accept(int lh, int timeout_ms) {
     sock_ent_t *e = sock_get(lh);
     if (!e || !e->listen) return -1;

@@ -198,6 +198,18 @@
             { n: 'SSHD.manifest', l: 10, note: '包描述：版本、依赖、min_compiler 与 sha256' },
             { n: 'tools/compiler/examples/sshd.c', l: 1010, note: '构建时使用的真实源文件' }
           ] },
+        { id: 'SSHCLIENT', state: 'ready', dir: 'packages/repo/',
+          out: '/bin/SSHCLIENT.TNCR', size: 57772,
+          sha: 'da04c31318bbc970bbeba7844cc8225d8ad6511303fe8957bb04efaaffe625e3',
+          descZh: 'SSH-2 客户端：TinyOS 主动连外部 SSH 服务器。传输层与服务端同构（curve25519-sha256 ECDH、AES-128-CTR、HMAC-SHA2-256），走 ssh-userauth 的 password 认证。内核无 pty，因此不申请伪终端，只能用 exec 跑命令或简易逐行 shell。', descEn: 'An SSH-2 client: TinyOS dials out to an external SSH server. The transport mirrors the server side (curve25519-sha256 ECDH, AES-128-CTR, HMAC-SHA2-256) and authenticates via ssh-userauth password. The kernel has no pty, so it never requests a pseudo-terminal and can only run commands via exec or a simple line-based shell.',
+          detailZh: ['SSH-2 客户端：TinyOS 主动连外部 SSH 服务器。传输层与服务端同构（curve25519-sha256 ECDH、AES-128-CTR、HMAC-SHA2-256），走 ssh-userauth 的 password 认证。内核无 pty，因此不申请伪终端，只能用 exec 跑命令或简易逐行 shell。', '安装：pkg install SSHCLIENT —— 按 sourcedir → FTP → HTTP(Worker) 顺序找源，下载后用 sha256 校验，通过则写入 /bin/SSHCLIENT.TNCR。', '用法：SSHCLIENT <ip> [port] [command...] —— 给了 command 就跑完退出，不给就进简易交互 shell。主机只接受点分十进制 IPv4（内核无 DNS）。', '产物 57772 字节，sha256 前 16 位 da04c31318bbc970…；完整清单见上方表格与 packages/repo/INDEX.json。'],
+          detailEn: ['An SSH-2 client: TinyOS dials out to an external SSH server. The transport mirrors the server side (curve25519-sha256 ECDH, AES-128-CTR, HMAC-SHA2-256) and authenticates via ssh-userauth password. The kernel has no pty, so it never requests a pseudo-terminal and can only run commands via exec or a simple line-based shell.', 'Install: pkg install SSHCLIENT — the source is looked up in order (local sourcedir, FTP, HTTP via the Worker mirror), verified with sha256, and on success written to /bin/SSHCLIENT.TNCR.', 'Usage: SSHCLIENT <ip> [port] [command...] — with a command it runs and exits; without one it drops into a simple interactive shell. Hosts must be dotted-quad IPv4 (the kernel has no DNS).', 'Artifact: 57772 bytes, sha256 starts with da04c31318bbc970…; the full table is above and in packages/repo/INDEX.json.'],
+          files: [
+            { n: 'SSHCLIENT.tncr', l: null, note: '已编译产物：pkg install 校验 sha256 后写入 /bin 下的文件' },
+            { n: 'SSHCLIENT.manifest', l: 10, note: '包描述：版本、依赖、min_compiler 与 sha256' },
+            { n: 'tools/compiler/examples/ssh_client.c', l: 764, note: '构建时使用的真实源文件' },
+            { n: 'tools/compiler/sshd_crypto.h', l: 820, note: '构建时使用的真实源文件' }
+          ] },
         { id: 'basic_demo', state: 'ready', dir: 'packages/repo/',
           out: '/bin/basic_demo.TNCR', size: 204,
           sha: 'b9e6faf53975ca7b7fad32d0b51471c31c22216e56cc8fff96e2d0601dfa4193',

@@ -48,6 +48,12 @@ PROGRAMS = [
     # aes128-ctr + hmac-sha2-256).  The installer offers it as an option;
     # without it, `sshd` tells the user to re-run the installer with --with-ssh.
     ("sshd.c",      "SSHD",       "c",     []),
+    # SSHCLIENT.TNCR: a real SSH-2 *client* (mirrors SSHD.TNCR):
+    #   sock_connect -> version exchange -> curve25519-sha256 KEX
+    #   -> NEWKEYS -> aes128-ctr + hmac-sha2-256 -> password auth
+    #   -> session channel exec (or a line-based interactive shell).
+    # 需要内核新增的 sock_connect API（Gen v0.1 client TCP 扩展）。
+    ("ssh_client.c", "SSHCLIENT",  "c",     []),
     # 全屏文本编辑器：`edit <file>`
     ("edit.c",      "EDIT",       "c",     []),
     # 系统自带的 MiniC 编译器：`cc <src.mc> [-o out.TNCR]`

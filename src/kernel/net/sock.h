@@ -19,6 +19,10 @@
 
 /* 监听 port（主机序）。返回 handle>=0，失败 <0。 */
 int  sock_listen(int port);
+/* 主动连接 ip:port（主机序）。复用 tcp_connect + tcp_wait_established，
+ * 完成三次握手后返回一个普通（非监听）句柄；失败 <0。
+ * timeout_ms 为握手等待上限（毫秒），<0 表示用 8000ms 默认。 */
+int  sock_connect(u32 ip, u16 port, int timeout_ms);
 /* 等待并接受一个连接。timeout_ms<0 表示无限等待。返回 handle，-1 超时。 */
 int  sock_accept(int lh, int timeout_ms);
 /* 读取数据。返回 >0 字节数、0 超时、-1 对端已关闭、-2 句柄无效。 */

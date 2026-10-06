@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-06T02:13:13",
+  "generated": "2026-10-06T13:44:09",
   "packages": [
     {
       "name": "CC",
@@ -30,6 +30,11 @@
       "name": "SSHD",
       "size": 114500,
       "sha256": "2507b0deaf22551b65eb85e276ba30aab949974430d6a876d64549e95eac8d02"
+    },
+    {
+      "name": "SSHCLIENT",
+      "size": 57772,
+      "sha256": "da04c31318bbc970bbeba7844cc8225d8ad6511303fe8957bb04efaaffe625e3"
     },
     {
       "name": "basic_demo",
