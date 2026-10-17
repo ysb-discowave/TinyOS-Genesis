@@ -207,7 +207,7 @@
           files: [
             { n: 'SSHCLIENT.tncr', l: null, note: '已编译产物：pkg install 校验 sha256 后写入 /bin 下的文件' },
             { n: 'SSHCLIENT.manifest', l: 10, note: '包描述：版本、依赖、min_compiler 与 sha256' },
-            { n: 'tools/compiler/examples/ssh_client.c', l: 764, note: '构建时使用的真实源文件' },
+            { n: 'tools/compiler/examples/ssh_client.c', l: 816, note: '构建时使用的真实源文件' },
             { n: 'tools/compiler/sshd_crypto.h', l: 820, note: '构建时使用的真实源文件' }
           ] },
         { id: 'basic_demo', state: 'ready', dir: 'packages/repo/',
@@ -307,11 +307,21 @@
           files: [
             { n: 'tinysh.tncr', l: null, note: '已编译产物：pkg install 校验 sha256 后写入 /bin 下的文件' },
             { n: 'tinysh.manifest', l: 10, note: '包描述：版本、依赖、min_compiler 与 sha256' },
-            { n: 'tools/tinysh/src/tinysh.c', l: 1266, note: '构建时使用的真实源文件' },
+            { n: 'tools/tinysh/src/tinysh.c', l: 1419, note: '构建时使用的真实源文件' },
             { n: 'tools/tinysh/src/kernel_api_tinyos.c', l: 343, note: '构建时使用的真实源文件' },
             { n: 'tools/tinysh/src/kernel_api_host.c', l: 454, note: '构建时使用的真实源文件' },
             { n: 'tools/tinysh/src/tinysh.h', l: 55, note: '构建时使用的真实源文件' },
             { n: 'tools/tinysh/src/kernel_api.h', l: 89, note: '构建时使用的真实源文件' }
+          ] },
+        { id: 'demos', state: 'ready', dir: 'packages/repo/',
+          out: '/bin/demos.TNCR', size: 3894,
+          sha: '59d8b62c07f8b9d786d6acf3149630d2275e116cbee409e379bb135fb47ef04a',
+          descZh: 'demos 程序（由 tools/build_users.py 构建）', descEn: 'The demos program, built by tools/build_users.py.',
+          detailZh: ['demos 程序（由 tools/build_users.py 构建）', '安装：pkg install demos —— 按 sourcedir → FTP → HTTP(Worker) 顺序找源，下载后用 sha256 校验，通过则写入 /bin/demos.TNCR。', '用法：安装后直接在 tinysh 里敲 demos 运行。', '产物 3894 字节，sha256 前 16 位 59d8b62c07f8b9d7…；完整清单见上方表格与 packages/repo/INDEX.json。'],
+          detailEn: ['The demos program, built by tools/build_users.py.', 'Install: pkg install demos — the source is looked up in order (local sourcedir, FTP, HTTP via the Worker mirror), verified with sha256, and on success written to /bin/demos.TNCR.', 'Usage: Once installed, run demos from tinysh.', 'Artifact: 3894 bytes, sha256 starts with 59d8b62c07f8b9d7…; the full table is above and in packages/repo/INDEX.json.'],
+          files: [
+            { n: 'demos.tncr', l: null, note: '已编译产物：pkg install 校验 sha256 后写入 /bin 下的文件' },
+            { n: 'demos.manifest', l: 12, note: '包描述：版本、依赖、min_compiler 与 sha256' }
           ] },
       ];
   /* PKGREPO:END */

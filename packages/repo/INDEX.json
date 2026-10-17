@@ -80,6 +80,14 @@
       "name": "tinysh",
       "size": 179104,
       "sha256": "4c317df355a489aeea5d6f26447f0a0472c67afc7c83b2f4fa4c8229f567f2bc"
+    },
+    {
+      "name": "demos",
+      "binary": "demos.pack",
+      "size": 3894,
+      "sha256": "59d8b62c07f8b9d786d6acf3149630d2275e116cbee409e379bb135fb47ef04a",
+      "kind": "pack",
+      "files": 8
     }
   ]
 }

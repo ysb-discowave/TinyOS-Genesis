@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="TinyOS Genesis v0.1 networking: the e1000 NIC driver, the handle-based TCP socket API, FTP client/server (TinyFTP), the TinySMB server, the SSHD.TNCR server, the QEMU port-forward table, and the hard limits of a cooperative single-threaded kernel." />
+  <meta name="description" content="TinyOS Genesis v0.1 networking: a multi-NIC driver registry (Intel e1000 / e1000e / i8255x PRO100, Realtek RTL8139, virtio-net), the handle-based TCP socket API, FTP client/server (TinyFTP), the TinySMB server, the SSHD.TNCR server, the QEMU port-forward table, and the hard limits of a cooperative single-threaded kernel." />
   <title>TinyOS Genesis v0.1 · 网络协议 / Network</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -44,9 +44,9 @@
     <!-- PAGE HEAD -->
     <section class="page-head" aria-labelledby="page-title">
       <div class="wrap">
-        <h1 id="page-title" data-zh="网络协议栈：e1000 之上能跑 FTP/SMB/SSH" data-en="Network stack: FTP/SMB/SSH on top of e1000">网络协议栈：e1000 之上能跑 FTP/SMB/SSH</h1>
-        <p class="lede" data-zh="内核网络栈是真实存在的代码（src/kernel/net/），不是规划。它从 e1000 网卡驱动起，提供句柄化 TCP socket，再往上实现 FTP 客户端/服务端、TinySMB 服务端，以及用户态的 SSH 服务端。本页逐项拆解，并重点讲清协作式单线程带来的限制。"
-                       data-en="The kernel network stack is real code (src/kernel/net/), not a plan. It starts with the e1000 NIC driver, offers a handle-based TCP socket layer, then FTP client/server, the TinySMB server, and the user-space SSH server. This page breaks it down and pays special attention to the limits of a cooperative single-threaded kernel.">内核网络栈是真实存在的代码（src/kernel/net/），不是规划。它从 e1000 网卡驱动起，提供句柄化 TCP socket，再往上实现 FTP 客户端/服务端、TinySMB 服务端，以及用户态的 SSH 服务端。本页逐项拆解，并重点讲清协作式单线程带来的限制。</p>
+        <h1 id="page-title" data-zh="网络协议栈：多网卡驱动之上跑 FTP/SMB/SSH" data-en="Network stack: FTP/SMB/SSH on multi-NIC drivers">网络协议栈：多网卡驱动之上跑 FTP/SMB/SSH</h1>
+        <p class="lede" data-zh="内核网络栈是真实存在的代码（src/kernel/net/），不是规划。它从一组网卡驱动（Intel e1000 / e1000e / i8255x PRO100、Realtek RTL8139、virtio-net，经统一驱动注册表挑选）起，提供句柄化 TCP socket，再往上实现 FTP 客户端/服务端、TinySMB 服务端，以及用户态的 SSH 服务端。本页逐项拆解，并重点讲清协作式单线程带来的限制。"
+                       data-en="The kernel network stack is real code (src/kernel/net/), not a plan. It starts from a set of NIC drivers (Intel e1000 / e1000e / i8255x PRO100, Realtek RTL8139, virtio-net, selected through a driver registry), offers a handle-based TCP socket layer, then FTP client/server, the TinySMB server, and the user-space SSH server. This page breaks it down and pays special attention to the limits of a cooperative single-threaded kernel.">内核网络栈是真实存在的代码（src/kernel/net/），不是规划。它从一组网卡驱动（Intel e1000 / e1000e / i8255x PRO100、Realtek RTL8139、virtio-net，经统一驱动注册表挑选）起，提供句柄化 TCP socket，再往上实现 FTP 客户端/服务端、TinySMB 服务端，以及用户态的 SSH 服务端。本页逐项拆解，并重点讲清协作式单线程带来的限制。</p>
 
         <nav class="section-toc" aria-label="本页区块导航">
           <a href="#overview" data-zh="概览" data-en="Overview">概览</a>
@@ -66,13 +66,13 @@
     <section id="overview" class="section" aria-labelledby="overview-title">
       <div class="wrap">
         <h2 id="overview-title" data-zh="概览：协议族一览" data-en="Overview: the protocol family">概览：协议族一览</h2>
-        <p class="section-lead" data-zh="网络栈分层很浅：一块真实驱动的网卡，一道句柄化的 TCP socket，三个跑在它上面的应用协议（FTP 双向、SMB 服务端、SSH 用户态）。下面这张图是架构，不是宣传。"
-                              data-en="The stack is shallow: one real NIC driver, one handle-based TCP socket layer, and three application protocols on top (FTP both ways, SMB server, SSH in user space). The diagram is architecture, not hype.">网络栈分层很浅：一块真实驱动的网卡，一道句柄化的 TCP socket，三个跑在它上面的应用协议（FTP 双向、SMB 服务端、SSH 用户态）。下面这张图是架构，不是宣传。</p>
+        <p class="section-lead" data-zh="网络栈分层很浅：一组真实驱动的网卡（注册表择优），一道句柄化的 TCP socket，三个跑在它上面的应用协议（FTP 双向、SMB 服务端、SSH 用户态）。下面这张图是架构，不是宣传。"
+                              data-en="The stack is shallow: a set of real NIC drivers (chosen by a registry), one handle-based TCP socket layer, and three application protocols on top (FTP both ways, SMB server, SSH in user space). The diagram is architecture, not hype.">网络栈分层很浅：一组真实驱动的网卡（注册表择优），一道句柄化的 TCP socket，三个跑在它上面的应用协议（FTP 双向、SMB 服务端、SSH 用户态）。下面这张图是架构，不是宣传。</p>
 
         <ol class="arch" aria-label="网络栈分层">
           <li class="arch-node">
-            <span class="arch-tag">e1000</span>
-            <span class="arch-detail" data-zh="网卡驱动（QEMU 默认）" data-en="NIC driver (QEMU default)">网卡驱动（QEMU 默认）</span>
+            <span class="arch-tag">NIC drivers</span>
+            <span class="arch-detail" data-zh="网卡驱动注册表（e1000 / e1000e / i8255x / rtl8139 / virtio-net）" data-en="NIC driver registry (e1000 / e1000e / i8255x / rtl8139 / virtio-net)">网卡驱动注册表（e1000 / e1000e / i8255x / rtl8139 / virtio-net）</span>
           </li>
           <li class="arch-arrow" aria-hidden="true">→</li>
           <li class="arch-node">
@@ -98,8 +98,8 @@
 
         <ul class="matrix">
           <li class="card">
-            <h3>e1000.c / e1000.h</h3>
-            <p data-zh="e1000 网卡驱动。QEMU 默认的虚拟网卡就是这个型号，所以开箱即可联调。" data-en="The e1000 NIC driver. QEMU's default virtual NIC is exactly this model, so it works out of the box.">e1000 网卡驱动。QEMU 默认的虚拟网卡就是这个型号，所以开箱即可联调。</p>
+            <h3>nic.c / nic.h + 各网卡驱动</h3>
+            <p data-zh="网卡驱动注册表与各型号驱动：e1000（Intel 传统 GbE）、e1000e（Intel 8257x/8256x-PCIe）、i8255x（Intel PRO/100）、rtl8139（Realtek）、virtio-net（云主机）。注册表择优启用第一个匹配的驱动；加新网卡型号只需写驱动 + 注册，不改 net.c。" data-en="NIC driver registry and per-model drivers: e1000 (Intel legacy GbE), e1000e (Intel 8257x/8256x-PCIe), i8255x (Intel PRO/100), rtl8139 (Realtek), virtio-net (cloud). The registry activates the first matching driver; adding a new NIC model is one driver + a register call, with no net.c change.">网卡驱动注册表与各型号驱动：e1000（Intel 传统 GbE）、e1000e（Intel 8257x/8256x-PCIe）、i8255x（Intel PRO/100）、rtl8139（Realtek）、virtio-net（云主机）。注册表择优启用第一个匹配的驱动；加新网卡型号只需写驱动 + 注册，不改 net.c。</p>
           </li>
           <li class="card">
             <h3>net.c / net.h</h3>

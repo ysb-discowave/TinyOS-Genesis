@@ -12,9 +12,18 @@ import os, re, sys, hashlib
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ---- 真实值来源 ----
+def _pkg_binary_path(name):
+    """包的真实产物：单文件 .tncr 或多文件 .pack（谁存在用谁）。"""
+    d = os.path.join(ROOT, "packages", "repo")
+    for ext in (".tncr", ".pack"):
+        p = os.path.join(d, name + ext)
+        if os.path.isfile(p):
+            return p
+    return None
+
 def real_pkg(name):
-    p = os.path.join(ROOT, "packages", "repo", name + ".tncr")
-    if not os.path.isfile(p):
+    p = _pkg_binary_path(name)
+    if not p:
         return None, None
     d = open(p, "rb").read()
     return len(d), hashlib.sha256(d).hexdigest()
@@ -28,10 +37,13 @@ def real_cmd_count():
     return len(names), names
 
 def real_pkg_count():
+    """仓库里**可安装**的包数 = 单文件 .tncr + 多文件 .pack。
+    （以前只数 .tncr，导致 demos.pack 这类包在官网不计数 —— 用户看到的
+      数量和真正能 `pkg install` 的数量对不上。）"""
     d = os.path.join(ROOT, "packages", "repo")
     if not os.path.isdir(d):
         return 0
-    return len([f for f in os.listdir(d) if f.endswith(".tncr")])
+    return len([f for f in os.listdir(d) if f.endswith(".tncr") or f.endswith(".pack")])
 
 SIZE, SHA = real_pkg("tinysh")
 NCMD, NAMES = real_cmd_count()
@@ -51,9 +63,9 @@ def real_pkg_list():
             pass
     out = []
     for f in sorted(os.listdir(os.path.join(ROOT, "packages", "repo"))):
-        if f.endswith(".tncr"):
-            size, sha = real_pkg(f[:-5])
-            out.append((f[:-5], size, sha))
+        if f.endswith(".tncr") or f.endswith(".pack"):
+            size, sha = real_pkg(f.rsplit(".", 1)[0])
+            out.append((f.rsplit(".", 1)[0], size, sha))
     return out
 
 def gen_pkgtable():
