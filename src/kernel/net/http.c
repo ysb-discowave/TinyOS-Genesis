@@ -157,8 +157,8 @@ static int http_do(tcp_conn_t *c, const char *host, const char *path,
 int http_get(const char *host, int port, const char *path,
              void *buf, int max, int *out_len) {
     if (!host || !path || !buf || !out_len || port <= 0 || max <= 0) return HTTP_E_INVAL;
-    u32 ip = 0;
-    if (dns_resolve(host, &ip) != 0) return HTTP_E_DNS;
+    u32 ip = host_to_ip(host);
+    if (ip == 0) return HTTP_E_DNS;
     tcp_conn_t *c = tcp_connect(ip, (u16)port);
     if (!c) return HTTP_E_CONN;
     if (tcp_wait_established(c, 5000) != 0) { tcp_close(c); return HTTP_E_TIMEOUT; }
@@ -169,8 +169,8 @@ int http_get(const char *host, int port, const char *path,
 
 int http_get_file(const char *host, int port, const char *path, const char *local) {
     if (!host || !path || !local || port <= 0) return HTTP_E_INVAL;
-    u32 ip = 0;
-    if (dns_resolve(host, &ip) != 0) return HTTP_E_DNS;
+    u32 ip = host_to_ip(host);
+    if (ip == 0) return HTTP_E_DNS;
 
     /* 单连接、无 Range 的 GET（Connection: close）。服务端在我们发
        Connection: close 后会主动关闭连接，内核读到 EOF 即可拿到完整 body，
