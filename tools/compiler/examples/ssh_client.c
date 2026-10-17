@@ -160,6 +160,8 @@ static unsigned char *rx_take(conn_t *c, u32 n) {
 /* ------------------------------------------------------------------ */
 /* 发送 / 接收一个完整 SSH 报文（与 SSHD.TNCR 完全一致）                */
 /* ------------------------------------------------------------------ */
+static int pkt_read_tmo(conn_t *c, unsigned char *type, unsigned char **pl, u32 *plen, int tmo);
+
 static int pkt_send(conn_t *c, unsigned char *pl, u32 pl_len) {
     const u32 block = 16;
     u32 maclen = c->enc_out ? 32u : 0u;
@@ -192,8 +194,14 @@ static int pkt_send(conn_t *c, unsigned char *pl, u32 pl_len) {
 }
 
 static int pkt_read(conn_t *c, unsigned char *type, unsigned char **pl, u32 *plen) {
+    return pkt_read_tmo(c, type, pl, plen, TMO_HANDSHAKE);
+}
+
+/* 可指定超时的版本：交互 shell 用短超时做空闲检测，否则每次空读都要卡
+ * TMO_HANDSHAKE(25s)，20 次 = 500s，表现成"只能执行一条指令"。 */
+static int pkt_read_tmo(conn_t *c, unsigned char *type, unsigned char **pl, u32 *plen, int tmo) {
     unsigned char hdr[4];
-    int r = rx_ensure(c, 4, TMO_HANDSHAKE);
+    int r = rx_ensure(c, 4, tmo);
     if (r != 0) return r == 1 ? 1 : -1;
     cx_memcpy(hdr, rx_take(c, 4), 4);
     if (c->enc_in) cx_aes128ctr_xor(&c->ctr_in, hdr, 4);
@@ -201,7 +209,7 @@ static int pkt_read(conn_t *c, unsigned char *type, unsigned char **pl, u32 *ple
     if (packet_len < 6u || packet_len > PKT_MAX) return -1;
 
     u32 maclen = c->enc_in ? 32u : 0u;
-    r = rx_ensure(c, packet_len + maclen, TMO_HANDSHAKE);
+    r = rx_ensure(c, packet_len + maclen, tmo);
     if (r != 0) return r == 1 ? 1 : -1;
 
     unsigned char *body = rx_take(c, packet_len);
@@ -563,7 +571,21 @@ static int run_exec(conn_t *c, int peer, const char *cmd) {
     }
 }
 
-/* 简易交互 shell：逐行发送，打印远端回显（无 pty） */
+/* 简易交互 shell：逐行发送，**回显与提示符全部由远端负责**。
+ *
+ * 两个曾经的 bug（都已修）：
+ *  1. "只能执行一条指令" —— 旧代码读输出的空闲检测是 idle<20，而 pkt_read
+ *     超时写死 TMO_HANDSHAKE(25s)，于是每条命令之后要空转 20*25s≈500s 才回到
+ *     提示符，远端早就发完提示符在等输入了。现在空闲检测用 400ms 短超时。
+ *  2. "看不到欢迎消息/提示符" —— 旧代码请求 shell 后直接自己打 "ssh> " 阻塞在
+ *     readline，远端发来的欢迎消息与提示符要等第一条命令之后才混在输出里出现。
+ *     现在请求 shell 后先把远端的欢迎消息与提示符读出来显示，再进入输入循环。
+ *
+ * 提示符与回显都由服务端 session_loop 发出（sshd.c），客户端不再自己打印
+ * "ssh> "，避免和远端提示符重复。 */
+#define SHELL_IDLE_MS   400     /* 连续这么多次空读就认为本条命令输出结束 */
+#define SHELL_FIRST_MS  4000    /* 发完命令后等首字节的耐心（慢命令要留时间） */
+
 static int run_shell(conn_t *c, int peer) {
     unsigned char *pl; u32 n; unsigned char t;
     static char line[MAX_LINE];
@@ -575,14 +597,35 @@ static int run_shell(conn_t *c, int peer) {
         bb_u8(&b, 1);
         if (pkt_send(c, b.b, b.n) < 0) return -1;
     }
-    A->println("ssh: interactive (no pty). type 'exit' to quit.");
+
+    /* ---- 先把远端的欢迎消息 + 提示符读出来显示 ----
+     * 服务端 session_loop 一进来就 chan_text(prompt)，前面可能还有 banner。
+     * 用短超时轮询：一旦读到 idle 就认为首屏已经读完。 */
+    for (int idle = 0; idle < 3; ) {
+        int r = pkt_read_tmo(c, &t, &pl, &n, 600);
+        if (r == 1) { idle++; continue; }
+        if (r != 0) return -1;
+        idle = 0;
+        if (t == M_CHANNEL_DATA) {
+            if (n >= 8) { u32 dlen = get_u32(pl + 4); if (n >= 8 + dlen) print_data(pl + 8, dlen); }
+        } else if (t == M_CHANNEL_CLOSE || t == M_CHANNEL_EOF) {
+            return 0;
+        } else if (t == M_CHANNEL_SUCCESS || t == M_CHANNEL_WINDOW_ADJUST
+                   || t == M_IGNORE) {
+            continue;
+        } else if (t == M_DISCONNECT) {
+            return -1;
+        }
+    }
+
+    /* ---- 交互主循环 ---- */
     for (;;) {
-        A->print("ssh> ");
         int l = A->readline(line, MAX_LINE - 1);
         if (l < 0) break;
         line[l] = 0;
         if (scmp(line, "exit") == 0 || scmp(line, "logout") == 0) break;
-        /* 发送这一行（带 CRLF）作为通道数据 */
+
+        /* 发送这一行（带 CRLF）作为通道数据；服务端会回显并执行 */
         int ll = slen(line);
         {
             bb_t b; bb_init(&b, g_pl, sizeof(g_pl));
@@ -592,21 +635,30 @@ static int run_shell(conn_t *c, int peer) {
             bb_str(&b, (const unsigned char *)"\r\n", 2);
             if (pkt_send(c, b.b, b.n) < 0) return -1;
         }
-        /* 读远端回显/输出直到空闲 */
-        for (int idle = 0; idle < 20; ) {
-            int r = pkt_read(c, &t, &pl, &n);
+
+        /* 读远端回显 + 输出 + 新提示符，直到短暂空闲即认为本条命令结束。
+         * 首字节给 SHELL_FIRST_MS（慢命令），之后 400ms 空闲即收尾。 */
+        int got_any = 0;
+        for (int idle = 0; idle < SHELL_IDLE_MS / 100; ) {
+            int tmo = got_any ? 400 : SHELL_FIRST_MS;
+            int r = pkt_read_tmo(c, &t, &pl, &n, tmo);
             if (r == 1) { idle++; continue; }
             if (r != 0) return -1;
-            idle = 0;
+            idle = 0; got_any = 1;
             if (t == M_CHANNEL_DATA) {
                 if (n >= 8) { u32 dlen = get_u32(pl + 4); if (n >= 8 + dlen) print_data(pl + 8, dlen); }
             } else if (t == M_CHANNEL_CLOSE || t == M_CHANNEL_EOF) {
-                return 0;
-            } else if (t == M_CHANNEL_REQUEST) {
+                goto done;
+            } else if (t == M_CHANNEL_SUCCESS || t == M_CHANNEL_WINDOW_ADJUST
+                       || t == M_CHANNEL_REQUEST || t == M_IGNORE) {
                 continue;
+            } else if (t == M_DISCONNECT) {
+                return -1;
             }
         }
     }
+
+done:
     /* 关闭通道 */
     {
         bb_t b; bb_init(&b, g_pl, sizeof(g_pl));

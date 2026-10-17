@@ -1,0 +1,12 @@
+name: demos
+version: v0.1
+description: 八个语言/网络/图形演示程序的合集（多文件 .pack）
+dependencies: []
+min_compiler: tncr>=0.1
+kind: pack
+files: 8
+sha256: 59d8b62c07f8b9d786d6acf3149630d2275e116cbee409e379bb135fb47ef04a
+build:
+  entry: demos.pack
+  output: /opt/demos
+  cmd: '# 由 tools/mkpack.py 生成'

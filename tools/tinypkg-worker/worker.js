@@ -13,6 +13,7 @@
  *   GET /index.json                 包清单（名称、大小、sha256）
  *   GET /<name>.manifest            取 manifest（带真实 sha256 供 pkg 校验）
  *   GET /<name>.tncr | .TNCR        取二进制
+ *   GET /<name>.pack                取多文件 .pack 归档（pkg install <name>.pack）
  *   GET /                           人类可读的索引页
  *
  * 缓存
@@ -43,7 +44,12 @@ const PACKAGES = {
   net_demo:   { size:    467, desc: 'ARP/IPv4/TCP network stack demo' },
   gui_demo:   { size:    470, desc: 'Desktop GUI demo (--gui)' },
   tiny_demo:  { size:    238, desc: 'TinyLang sample' },
+  // 多文件 .pack 归档：pkg install demos.pack 下载后解包。
+  demos:      { size:   3894, bin: 'pack', desc: 'Eight demo programs in one multi-file .pack' },
 };
+
+// 每个包的产物扩展名：默认 .tncr，.pack 包用 bin 字段覆盖。
+function binExt(p) { return (p && p.bin) ? p.bin : 'tncr'; }
 
 const UPSTREAM = 'https://raw.githubusercontent.com/ysb-discowave/TinyOS-Genesis/main/packages/repo/';
 const UA = 'TinyOS-Genesis/0.1';
@@ -58,7 +64,7 @@ function indexJson() {
   const list = Object.keys(PACKAGES).map((name) => ({
     name,
     manifest: name + '.manifest',
-    binary: name + '.tncr',
+    binary: name + '.' + binExt(PACKAGES[name]),
     size: PACKAGES[name].size,
     description: PACKAGES[name].desc,
   }));
@@ -76,8 +82,9 @@ function indexJson() {
 function indexPage() {
   const rows = Object.keys(PACKAGES).map((n) => {
     const p = PACKAGES[n];
+    const be = '.' + binExt(p);
     return `  <tr>
-    <td><a href="/${n}.tncr">${n}.tncr</a></td>
+    <td><a href="/${n}${be}">${n}${be}</a></td>
     <td><a href="/${n}.manifest">manifest</a></td>
     <td class="num">${p.size.toLocaleString('en-US')} B</td>
     <td>${p.desc}</td>
@@ -177,7 +184,7 @@ export default {
     if (path === '/index.csv') {
       const lines = ['name,manifest,binary,size'];
       for (const [n, p] of Object.entries(PACKAGES)) {
-        lines.push(`${n},${n}.manifest,${n}.tncr,${p.size}`);
+        lines.push(`${n},${n}.manifest,${n}.${binExt(p)},${p.size}`);
       }
       return new Response(lines.join('\n') + '\n', {
         status: 200,
@@ -193,7 +200,8 @@ export default {
     }
 
     // 去掉前导 /
-    const m = path.match(/^\/([A-Za-z0-9_]+)\.(manifest|tncr|TNCR)$/);
+    // .pack = 多文件归档，pkg install <name>.pack 从这里下载后解包安装。
+    const m = path.match(/^\/([A-Za-z0-9_]+)\.(manifest|tncr|TNCR|pack)$/);
     if (!m) {
       return new Response('not found\n', {
         status: 404,
@@ -204,9 +212,9 @@ export default {
     const name = m[1];
     const ext = m[2].toLowerCase();
     // 直接透传到固定上游 UPSTREAM（已锁定在 packages/repo/，文件名也只允许
-    // [A-Za-z0-9_]+.(manifest|tncr|TNCR)），不会变成任意 URL 的开放代理。
+    // [A-Za-z0-9_]+.(manifest|tncr|TNCR|pack)），不会变成任意 URL 的开放代理。
     // PACKAGES 只用于首页/index.json 展示，不限制实际可取哪些包。
     if (ext === 'manifest') return proxyUpstream(name + '.manifest', 'manifest');
-    return proxyUpstream(name + '.tncr', 'binary');
+    return proxyUpstream(name + '.' + (ext === 'pack' ? 'pack' : 'tncr'), 'binary');
   },
 };

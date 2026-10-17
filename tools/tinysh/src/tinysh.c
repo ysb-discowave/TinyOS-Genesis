@@ -232,7 +232,11 @@ static int pk_stricmp(const char *a, const char *b) {
     return 0;
 }
 
-/* 从 key=value 文本取 key 的值（容忍前导空白） */
+/* 从 key=value / key: value 文本取 key 的值（容忍前导空白）。
+ * 分隔符两种都认：.pack 元数据与 /bin/path 用 `=`（prog.hello=/bin/x.TNCR），
+ * 而 manifest 是 YAML `:`（sha256: abc...）。以前只认 `=`，导致 manifest 里的
+ * sha256 永远取不到 → install 总打印 "skipping verification"，完整性形同虚设。
+ * key 用行首前缀匹配，所以 prog.<名>= 不会被误认成 name=。 */
 static int pkg_get_kv(const char *buf, int len, const char *key, char *out, int n) {
     out[0] = 0;
     int klen = (int)strlen(key);
@@ -244,7 +248,8 @@ static int pkg_get_kv(const char *buf, int len, const char *key, char *out, int 
         int s = line;
         while (s < line + ll && (buf[s] == ' ' || buf[s] == '\t')) s++;
         int avail = (line + ll) - s;
-        if (avail > klen && strncmp(buf + s, key, klen) == 0 && buf[s + klen] == '=') {
+        if (avail > klen && strncmp(buf + s, key, klen) == 0 &&
+            (buf[s + klen] == '=' || buf[s + klen] == ':')) {
             int v = s + klen + 1;
             while (v < line + ll && (buf[v] == ' ' || buf[v] == '\t')) v++;
             int ve = line + ll;
@@ -376,6 +381,39 @@ static void pkg_conf_ensure(void) {
         return;
     }
     fs_write(PKG_CONF, def, (int)strlen(def));
+}
+
+/* 在 /etc/pkg.conf 里替换（或追加）一个 key=value 行，其余行原样保留。
+ * 供 pkg source set / pkg repo set 复用，避免两份同样的逐行改写逻辑。 */
+static void pkg_conf_set(const char *key, const char *val) {
+    static char conf[4096];
+    static char newc[4096];
+    int klen = (int)strlen(key);
+    long cr = fs_read(PKG_CONF, conf, (int)sizeof conf - 1);
+    int w = 0;
+    if (cr >= 0) {
+        conf[cr] = 0;
+        int i = 0;
+        while (i < cr) {
+            int line = i;
+            while (i < cr && conf[i] != '\n' && conf[i] != '\r' && conf[i] != 0) i++;
+            int ll = i - line;
+            int s = line;
+            while (s < line + ll && (conf[s] == ' ' || conf[s] == '\t')) s++;
+            int is_key = ((line + ll - s) > klen) &&
+                         strncmp(conf + s, key, klen) == 0 && conf[s + klen] == '=';
+            if (!is_key) {
+                memcpy(newc + w, conf + line, (size_t)ll); w += ll;
+                if (i < cr && conf[i] != 0) newc[w++] = '\n';
+            }
+            while (i < cr && (conf[i] == '\n' || conf[i] == '\r' || conf[i] == 0)) i++;
+        }
+    }
+    int vl = (int)strlen(val);
+    if (w > 0 && newc[w - 1] != '\n') newc[w++] = '\n';
+    if (w + vl + klen + 3 < (int)sizeof newc)
+        w += snprintf(newc + w, sizeof newc - w, "%s=%s\n", key, val);
+    fs_write(PKG_CONF, newc, w);
 }
 
 /* ============ .pack 解包安装（供 pkg install 调用） ============ */
@@ -540,6 +578,86 @@ static int pack_install(const char *packpath) {
     return E_OK;
 }
 
+/* ---- .pack 网络分发 ----
+ * 单文件 .tncr 早就支持 FTP / HTTP(Worker) 两个网络源，但 .pack 之前只能从
+ * 本地装（pkg install foo.pack 只查 sourcedir）。下面把同样的"本地→FTP→HTTP"
+ * 查找补到 .pack 上，并沿用 sha256 校验：<name>.manifest 里的 sha256 是
+ * **整个 .pack 文件**的摘要，校验通过才解包安装。 */
+
+/* 用 manifest 里的 sha256 校验刚下好的 .pack。
+ * manifest 缺失 / 无 sha256 时只警告不拦（与单文件安装行为一致）。
+ * 返回 0 可继续，-1 表示校验失败（必须中止安装）。 */
+static int pack_sha_check(const char *binpath, const char *manpath) {
+    static char man[8192];
+    int n = (int)fs_read(manpath, man, (int)sizeof man - 1);
+    if (n <= 0) { printf("pack: no manifest for sha256, skipping verification\n"); return 0; }
+    man[n] = 0;
+    char exp[65]; exp[0] = 0;
+    pkg_get_kv(man, n, "sha256", exp, sizeof exp);
+    if (!exp[0]) { printf("pack: manifest has no sha256, skipping verification\n"); return 0; }
+    char act[65];
+    if (net_sha256_file(binpath, act, sizeof act) != 0) return -1;
+    if (pk_stricmp(exp, act) != 0) {
+        printf("pack: sha256 MISMATCH!\n  expected %s\n  actual   %s\n", exp, act);
+        return -1;
+    }
+    printf("pack: sha256 verified\n");
+    return 0;
+}
+
+/* 从网络取 <base>.pack 并解包安装。顺序：HTTP(Worker) -> FTP。
+ * HTTP 优先：默认源就是 Worker 中转，且 FTP 连不通时会长时间阻塞，
+ * 放前面才能保证"网络不通时快速回退"。返回 E_OK / E_NOENT（各网络源都没有）/ 其它错误码。 */
+static int pack_install_remote(const char *base) {
+    char gh[256], gport[16], gpath[256];
+    char fh[64], fp[16], fu[64], fpass[64], fpath[256];
+    pkg_conf_get("repo_host", gh, sizeof gh, "tinyos-pkg-down.ysbdwz.dpdns.org");
+    pkg_conf_get("repo_port", gport, sizeof gport, "80");
+    pkg_conf_get("repo_path", gpath, sizeof gpath, "");
+    pkg_conf_get("ftp_host", fh, sizeof fh, "10.0.2.2");
+    pkg_conf_get("ftp_port", fp, sizeof fp, "21");
+    pkg_conf_get("ftp_user", fu, sizeof fu, "anonymous");
+    pkg_conf_get("ftp_pass", fpass, sizeof fpass, "");
+    pkg_conf_get("ftp_path", fpath, sizeof fpath, "/packages/repo");
+
+    fs_mkdir(PKG_TMP_DIR);
+    char tmp[512], tman[512];
+    snprintf(tmp, sizeof tmp, "%s/pkg_%s.pack", PKG_TMP_DIR, base);
+    snprintf(tman, sizeof tman, "%s/pkg_%s.manifest", PKG_TMP_DIR, base);
+
+    int got = 0;
+    /* 1) HTTP(Worker 中转，明文) */
+    {
+        char hp[512], hm[512];
+        snprintf(hp, sizeof hp, "%s/%s.pack", gpath, base);
+        snprintf(hm, sizeof hm, "%s/%s.manifest", gpath, base);
+        printf("pack: trying HTTP %s:%s ...\n", gh, gport);
+        if (net_http_file(gh, atoi(gport), hp, tmp) == 0) {
+            net_http_file(gh, atoi(gport), hm, tman);           /* best-effort 拉 manifest */
+            got = 1;
+        }
+    }
+    /* 2) FTP（HTTP 失败才试） */
+    if (!got) {
+        char rp[512], rm[512];
+        snprintf(rp, sizeof rp, "%s/%s.pack", fpath, base);
+        snprintf(rm, sizeof rm, "%s/%s.manifest", fpath, base);
+        printf("pack: trying FTP %s:%s ...\n", fh, fp);
+        if (net_ftp_fetch(fh, atoi(fp), fu, fpass, rp, tmp) == 0) {
+            net_ftp_fetch(fh, atoi(fp), fu, fpass, rm, tman);   /* best-effort 拉 manifest */
+            got = 1;
+        }
+    }
+    if (!got) return E_NOENT;
+
+    if (pack_sha_check(tmp, tman) != 0) { fs_remove(tmp); fs_remove(tman); return E_IO; }
+
+    int r = pack_install(tmp);
+    fs_remove(tmp);
+    fs_remove(tman);
+    return r;
+}
+
 static void pkg_print_help(void) {
     printf("pkg: package manager (v0.1, local + FTP + HTTP source)\n");
     printf("usage:\n");
@@ -549,18 +667,20 @@ static void pkg_print_help(void) {
     printf("  pkg install <name>       install from local source, FTP, or HTTP\n");
     printf("  pkg remove <name>        remove an installed package\n");
     printf("  pkg source [set <path>]  show / set the source dir\n");
+    printf("  pkg repo [set <host> [port]]  show / set the HTTP mirror\n");
     printf("  pkg help                 this message\n");
     printf("notes:\n");
     printf("  install looks up the package in this order:\n");
     printf("    1) local source dir (sourcedir)\n");
-    printf("    2) FTP source (ftp_host/ftp_port/ftp_path)\n");
-    printf("    3) HTTP source (repo_host/repo_port/repo_path)\n");
+    printf("    2) HTTP source (repo_host/repo_port/repo_path)\n");
+    printf("    3) FTP source (ftp_host/ftp_port/ftp_path)\n");
     printf("  each source serves <name>.manifest + <name>.tncr; the manifest's\n");
     printf("  sha256 is checked against the downloaded binary before install.\n");
-    printf("  multi-file .pack packages:\n");
-    printf("    pkg install <name>.pack    unpack a .pack archive into its\n");
-    printf("                               install_dir, register env./prog. in\n");
-    printf("                               /bin/path, then run <prog> to launch.\n");
+    printf("  multi-file .pack packages (also fetched over FTP/HTTP):\n");
+    printf("    pkg install <name>.pack    fetch (local/FTP/HTTP) then unpack\n");
+    printf("                               the .pack into its install_dir,\n");
+    printf("                               register env./prog. in /bin/path,\n");
+    printf("                               then run <prog> to launch.\n");
     printf("    build one with: pack <srcdir> -o <name>.pack --name <name>\n");
     printf("  The default HTTP source is the tinyos-pkg-down Worker mirror, which\n");
     printf("  terminates TLS at the edge and serves plain HTTP, so the kernel\n");
@@ -712,6 +832,29 @@ static int cmd_pkg(int argc, char **argv) {
         return E_OK;
     }
 
+    if (pk_stricmp(sub, "repo") == 0) {
+        /* pkg repo show | set <host> [port] —— 切换 HTTP 镜像源。
+         * 改的是 /etc/pkg.conf 的 repo_host/repo_port，install 时直接读它。*/
+        const char *r = (argc >= 3) ? argv[2] : "";
+        if (pk_stricmp(r, "set") == 0) {
+            if (argc < 4) { printf("usage: pkg repo set <host> [port]\n"); return E_ARGC; }
+            const char *host = argv[3];
+            const char *port = (argc >= 5) ? argv[4] : "80";
+            pkg_conf_ensure();
+            pkg_conf_set("repo_host", host);
+            pkg_conf_set("repo_port", port);
+            printf("pkg: HTTP repo set to %s:%s\n", host, port);
+            return E_OK;
+        }
+        char gh[256], gport[16], gpath[256];
+        pkg_conf_ensure();
+        pkg_conf_get("repo_host", gh, sizeof gh, "?");
+        pkg_conf_get("repo_port", gport, sizeof gport, "?");
+        pkg_conf_get("repo_path", gpath, sizeof gpath, "");
+        printf("repo_host=%s\nrepo_port=%s\nrepo_path=%s\n", gh, gport, gpath);
+        return E_OK;
+    }
+
     if (pk_stricmp(sub, "source") == 0) {
         const char *r = (argc >= 3) ? argv[2] : "";
         if (pk_stricmp(r, "set") == 0) {
@@ -780,23 +923,33 @@ static int cmd_pkg(int argc, char **argv) {
             return E_ARGC;
         }
         const char *name = argv[2];
-        /* .pack 多文件包：本地源目录里存在同名 .pack 就解包安装 */
+        /* .pack 多文件包：本地源目录 → 直接路径 → 网络(FTP/HTTP) */
         {
             int nl = (int)strlen(name);
             if (nl > 5 && pk_stricmp(name + nl - 5, ".pack") == 0) {
+                /* base = 去掉 .pack 后缀的名字，用于网络查找与临时文件名 */
+                char base[256];
+                int bl = nl - 5 < (int)sizeof base - 1 ? nl - 5 : (int)sizeof base - 1;
+                memcpy(base, name, (size_t)bl); base[bl] = 0;
+
                 char sd0[256];
                 pkg_conf_get("sourcedir", sd0, sizeof sd0, PKG_DEF_SRC);
-                char pp[512];
-                snprintf(pp, sizeof pp, "%s/%s", sd0, name);
                 char probe;
+                /* 1) 本地源目录 <sourcedir>/<base>.pack */
+                char pp[512];
+                snprintf(pp, sizeof pp, "%s/%s.pack", sd0, base);
                 if (fs_read(pp, &probe, 1) >= 0) {
                     printf("pack: found local package %s\n", pp);
                     return pack_install(pp);
                 }
-                /* 也允许直接给路径 */
+                /* 2) 也允许直接给路径 */
                 if (strchr(name, '/') && fs_read(name, &probe, 1) >= 0)
                     return pack_install(name);
-                printf("pack: %s not found in source dir %s\n", name, sd0);
+                /* 3+4) 网络源：FTP -> HTTP(Worker)，带 sha256 校验 */
+                printf("pack: %s not in source dir %s; trying network ...\n", base, sd0);
+                int r = pack_install_remote(base);
+                if (r == E_OK) return r;
+                printf("pack: %s not found on FTP/HTTP sources either\n", base);
                 return E_NOENT;
             }
         }
