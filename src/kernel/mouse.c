@@ -18,11 +18,32 @@
 
 static int mx = 40, my = 12;
 static volatile u8 btns = 0;
-static u8 prev_btns = 0;
 static u8 packet[3];
 static int pidx = 0;
 static int g_present = 0;
 static u32 g_pkt_ok = 0, g_pkt_bad = 0;
+
+/* 点击边沿锁存：IRQ 里就记下"按下过"，消费端（桌面循环）忙/被屏幕输出
+ * 堵住时也不会把一次点击整个吞掉——否则 press+release 都发生在两次
+ * handle_mouse 之间，边沿检测看到的是 0->0，点击凭空消失。 */
+static volatile int g_click_latch  = 0;
+static volatile int g_rclick_latch = 0;
+
+/* 自绘光标状态：当前样式、已绘制格索引（-1 表示未绘制）、被覆盖格原值 */
+static int g_style = MOUSE_STYLE_INVERT;
+static int cur_idx = -1;
+static u16 saved_char = 0;
+
+/* 非反色样式表：字形 + 属性字节（低8位 fg/bg） */
+struct cursor_style { u8 glyph; u8 attr; };
+static const struct cursor_style g_styles[] = {
+    {0x00, 0x00},   /* 0 INVERT：特殊处理，占位 */
+    {0xDB, 0x0F},   /* 1 BLOCK：实心方块 █ */
+    {0x10, 0x0F},   /* 2 ARROW：右箭头 ► */
+    {'+',  0x0F},   /* 3 CROSS：十字 + */
+    {0xF5, 0x0E},   /* 4 BUSY：忙碌 ¤ */
+    {0xB3, 0x0F},   /* 5 TEXT：文本 I 形 │ */
+};
 
 #define PS2_TIMEOUT 200000u
 
@@ -78,36 +99,43 @@ int mouse_init_step(void) { return g_step; }
 
 static void mouse_irq(regs_t *r) {
     (void)r;
-    u8 st = inb(0x64);
-    if (!(st & 0x01)) return;       /* 没有数据（伪中断） */
-    if (!(st & 0x20)) return;       /* bit5=0 说明是键盘数据，交给键盘驱动 */
-    u8 d = inb(0x60);
+    /* 把 8042 输出缓冲里排队的字节一次抽干。每个 IRQ 只读一字节的话，
+     * 同一批的后续字节要等下一个沿才被处理，拖动/连点容易丢帧漂移。 */
+    for (;;) {
+        u8 st = inb(0x64);
+        if (!(st & 0x01)) break;       /* 输出缓冲空 */
+        if (!(st & 0x20)) return;      /* bit5=0：键盘数据，交还键盘驱动 */
+        u8 d = inb(0x60);
 
-    switch (pidx) {
-    case 0:
-        /* 首字节 bit3 必须为 1；否则是错位的数据流，丢帧重新同步 */
-        if (!(d & 0x08)) { g_pkt_bad++; return; }
-        packet[0] = d; pidx = 1;
-        break;
-    case 1:
-        packet[1] = d; pidx = 2;
-        break;
-    default: {
-        packet[2] = d; pidx = 0;
-        g_pkt_ok++;
-        int dx = (int)packet[1];
-        int dy = (int)packet[2];
-        if (packet[0] & 0x10) dx |= ~0xFF;   /* 符号扩展 */
-        if (packet[0] & 0x20) dy |= ~0xFF;
-        /* bit6/bit7 是溢出标志：此时位移已不可信，整帧丢弃 */
-        if (!(packet[0] & 0xC0)) {
-            mx += dx; my -= dy;
-            if (mx < 0) mx = 0; if (mx >= VGA_WIDTH) mx = VGA_WIDTH - 1;
-            if (my < 0) my = 0; if (my >= VGA_HEIGHT) my = VGA_HEIGHT - 1;
+        switch (pidx) {
+        case 0:
+            /* 首字节 bit3 必须为 1；否则是错位的数据流，丢帧重新同步 */
+            if (!(d & 0x08)) { g_pkt_bad++; continue; }
+            packet[0] = d; pidx = 1;
+            break;
+        case 1:
+            packet[1] = d; pidx = 2;
+            break;
+        default: {
+            packet[2] = d; pidx = 0;
+            g_pkt_ok++;
+            int dx = (int)packet[1];
+            int dy = (int)packet[2];
+            if (packet[0] & 0x10) dx |= ~0xFF;   /* 符号扩展 */
+            if (packet[0] & 0x20) dy |= ~0xFF;
+            /* bit6/bit7 是溢出标志：此时位移已不可信，整帧丢弃 */
+            if (!(packet[0] & 0xC0)) {
+                mx += dx; my -= dy;
+                if (mx < 0) mx = 0; if (mx >= VGA_WIDTH) mx = VGA_WIDTH - 1;
+                if (my < 0) my = 0; if (my >= VGA_HEIGHT) my = VGA_HEIGHT - 1;
+            }
+            u8 nb = (u8)(packet[0] & 0x07);
+            if ((nb & 1) && !(btns & 1)) g_click_latch  = 1;
+            if ((nb & 2) && !(btns & 2)) g_rclick_latch = 1;
+            btns = nb;
+            break;
         }
-        btns = (u8)(packet[0] & 0x07);
-        break;
-    }
+        }
     }
 }
 
@@ -149,7 +177,8 @@ static int mouse_handshake(void) {
 
 /* 返回 0 = 检测到鼠标并成功启用上报 */
 int mouse_init(void) {
-    pidx = 0; btns = 0; prev_btns = 0; g_present = 0;
+    pidx = 0; btns = 0; g_present = 0;
+    g_click_latch = 0; g_rclick_latch = 0;
     g_pkt_ok = 0; g_pkt_bad = 0;
     g_step = 1;
 
@@ -211,11 +240,47 @@ void mouse_set_position(int x, int y) {
 u32 mouse_packets_ok(void)  { return g_pkt_ok; }
 u32 mouse_packets_bad(void) { return g_pkt_bad; }
 
-static int edge(u8 mask) {
-    int c = (btns & mask) && !(prev_btns & mask);
-    prev_btns = btns;
-    return c;
-}
-int mouse_consume_click(void)  { return edge(1); }
-int mouse_consume_rclick(void) { return edge(2); }
+/* 点击边沿在 IRQ 里锁存（见 g_click_latch），这里只负责取走。
+ * 好处：桌面循环被屏幕输出/串口打印堵住时，一次 press+release 不会
+ * 因为"两次 handle_mouse 之间按钮已经抬起"而整个丢失。 */
+int mouse_consume_click(void)  { int c = g_click_latch;  g_click_latch  = 0; return c; }
+int mouse_consume_rclick(void) { int c = g_rclick_latch; g_rclick_latch = 0; return c; }
 int mouse_middle_down(void)    { return (btns & 4) ? 1 : 0; }
+
+/* ---------------------------------------------------------------
+ * 自绘光标渲染：把光标的绘制/擦除收敛进鼠标驱动。
+ *
+ * 规则：paint 前 WM 会先 erase；重复 paint 同一格是空操作；erase 在无
+ * 已绘光标时是空操作。INVERT 沿用原反色一格逻辑，其余样式写 (attr<<8|glyph)。
+ * 移动/设置位置都不会自动重绘，由 WM 每帧显式调用。
+ * --------------------------------------------------------------- */
+void mouse_set_style(int style) {
+    if (style < MOUSE_STYLE_INVERT || style > MOUSE_STYLE_TEXT) return;
+    g_style = style;
+}
+int mouse_style(void) { return g_style; }
+
+void mouse_cursor_erase(void) {
+    if (cur_idx < 0) return;            /* 没有已绘光标，空操作 */
+    vga_buffer()[cur_idx] = saved_char;
+    cur_idx = -1;
+}
+
+void mouse_cursor_paint(void) {
+    if (mx < 0 || mx >= VGA_WIDTH || my < 0 || my >= VGA_HEIGHT) return;
+    int idx = my * VGA_WIDTH + mx;
+    if (cur_idx == idx) return;         /* 重复 paint 同一格，空操作 */
+    if (cur_idx >= 0) {                 /* 之前绘制过且位置变了，先恢复 */
+        vga_buffer()[cur_idx] = saved_char;
+    }
+    u16 *buf = vga_buffer();
+    saved_char = buf[idx];
+    cur_idx = idx;
+    if (g_style == MOUSE_STYLE_INVERT) {
+        vga_invert_cell(mx, my);
+    } else if (g_style >= MOUSE_STYLE_BLOCK && g_style <= MOUSE_STYLE_TEXT) {
+        buf[idx] = (u16)((g_styles[g_style].attr << 8) | g_styles[g_style].glyph);
+    } else {
+        vga_invert_cell(mx, my);        /* 兜底：样式异常时退回反色 */
+    }
+}

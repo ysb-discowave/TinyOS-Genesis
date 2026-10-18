@@ -14,6 +14,11 @@ static int   g_cap_max = 0;
 static int   g_cap_len = 0;
 static int   g_cap_ovf = 0;
 
+/* 窗口输出 sink（桌面终端窗口的滚动缓冲）；NULL = 默认行为 */
+static void (*g_sink)(char c) = 0;
+
+void console_set_sink(void (*fn)(char c)) { g_sink = fn; }
+
 void cons_capture_begin(char *buf, int max) {
     g_cap_buf = buf; g_cap_max = max; g_cap_len = 0; g_cap_ovf = 0;
     if (buf && max > 0) buf[0] = 0;
@@ -30,6 +35,12 @@ void kputc(char c) {
     if (g_cap_buf) {
         if (g_cap_len < g_cap_max - 1) g_cap_buf[g_cap_len++] = c;
         else g_cap_ovf = 1;
+        return;
+    }
+    if (g_sink) {
+        /* 桌面窗口模式：字符进窗口滚动缓冲，串口仍镜像（测试读串口）*/
+        g_sink(c);
+        serial_putc(c);
         return;
     }
     vga_putc(c);

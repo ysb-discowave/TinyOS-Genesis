@@ -33,4 +33,10 @@ int  cons_capture_overflowed(void);
 int  cons_capture_active(void);
 void cons_capture_end(void);
 
+/* ---- 窗口输出 sink（桌面终端窗口用） ----
+ * 设置后 kputc 追加到 sink 回调（桌面把字符收进窗口自己的滚动缓冲），
+ * 串口仍然镜像（自动化测试靠读串口）；VGA 由窗口管理器统一合成。
+ * 传 NULL 恢复默认（VGA + 串口）。与 cons_capture 互斥：capture 优先。 */
+void console_set_sink(void (*fn)(char c));
+
 #endif /* TINYOS_CONSOLE_H */

@@ -20,6 +20,7 @@
 
 #define TNCR_F_GUI     (1u << 0)
 #define TNCR_F_DESKTOP (1u << 1)
+#define TNCR_F_RELOC   (1u << 2)  /* 尾部带重定位表：映像可加载到任意槽位地址 */
 
 /* 运行一个 TNCR 程序；session_id 为发起运行的终端会话（0 = 普通 Shell）。
  * GUI 程序若不在桌面终端会话内运行，将通过 api->gui_open 触发内核异常。*/

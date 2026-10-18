@@ -17,6 +17,20 @@ int  mouse_consume_click(void);
 int  mouse_consume_rclick(void);
 int  mouse_middle_down(void);
 
+/* 光标样式 */
+#define MOUSE_STYLE_INVERT 0   /* 反色一格（默认，任何底色可见） */
+#define MOUSE_STYLE_BLOCK   1   /* 实心方块 █ */
+#define MOUSE_STYLE_ARROW   2   /* 右箭头 ► (CP437 0x10) */
+#define MOUSE_STYLE_CROSS   3   /* 十字 + */
+#define MOUSE_STYLE_BUSY    4   /* 忙碌 ¤ (CP437 0xF5) */
+#define MOUSE_STYLE_TEXT    5   /* 文本 I 形 (CP437 0xB3) */
+
+void mouse_set_style(int style);   /* 设置样式（越界忽略） */
+int  mouse_style(void);            /* 当前样式 */
+/* 光标渲染：paint 前会先 erase；重复 paint 同一格是空操作 */
+void mouse_cursor_paint(void);     /* 在当前位置画光标（保存被覆盖的格） */
+void mouse_cursor_erase(void);     /* 恢复被覆盖的格 */
+
 /* 诊断计数：收到的完整帧数 / 被丢弃的错位帧数 */
 u32  mouse_packets_ok(void);
 u32  mouse_packets_bad(void);

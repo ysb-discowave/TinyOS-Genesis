@@ -258,3 +258,68 @@ int k_http_tunnel(const char *proxy_host, int proxy_port,
                   const char *host, int port) {
     return http_connect_tunnel(proxy_host, proxy_port, host, port);
 }
+
+/* ================================================================
+ * Genesis v0.2 多进程扩展：任务系统 + IPC + 分块文件 I/O。
+ * 用户态（TNCR）经 tinyos_api_t 末尾的 task_* / ipc_* 字段访问；
+ * 真正的实现在 src/kernel/task.c。
+ * ================================================================ */
+#include "task.h"
+#include "mouse.h"
+
+int  k_task_spawn(const char *path) { return task_spawn(path); }
+int  k_task_spawn_arg(const char *path, const char *arg) {
+    return task_spawn_arg(path, arg);
+}
+int  k_task_self(void)        { return task_current_pid(); }
+int  k_task_parent(void)      { return task_cur_parent(); }
+void k_task_exit(int code)    { task_exit(code); }
+void k_task_yield(void)       { task_yield(); }
+int  k_task_kill(int pid)     { return task_kill(pid); }
+int  k_task_state_of(int pid) { return task_state_of(pid); }
+int  k_task_exit_code(int pid){ return task_exit_code(pid); }
+int  k_task_fault_vec(int pid){ return task_fault_vec(pid); }
+void k_task_set_respawn(int pid, int on) { task_set_respawn(pid, on); }
+
+int  k_ipc_send(int dst, const void *msg, int n) {
+    return ipc_send(dst, msg, n);
+}
+int  k_ipc_recv(void *msg, int max, int *from, int timeout_ms) {
+    return ipc_recv(msg, max, from, timeout_ms);
+}
+int  k_ipc_pending(int pid) { return ipc_pending(pid); }
+
+/* ---- 分块文件 I/O ----
+ * fs_read_at/fs_write_at：按偏移读写字文件切片。写路径是"整读-拼接-整写"，
+ * 对小文件够用且实现直白；大文件请分多刀（worker 每 2KB 一刀并让出 CPU）。 */
+int k_fs_read_at(const char *path, void *buf, int n, long off) {
+    if (!buf || n < 0 || off < 0) return -1;
+    u32 size = 0;
+    const u8 *d = vfs_read_file(path, &size);
+    if (!d) return -1;
+    if ((u32)off >= size) return 0;
+    u32 avail = size - (u32)off;
+    if ((u32)n > avail) n = (int)avail;
+    memcpy(buf, d + off, (u32)n);
+    return n;
+}
+
+int k_fs_write_at(const char *path, const void *buf, int n, long off) {
+    if (off < 0 || n < 0 || !path) return -1;
+    u32 size = 0;
+    const u8 *d = vfs_read_file(path, &size);
+    u32 end = (u32)off + (u32)n;
+    u32 total = size > end ? size : end;
+    u8 *tmp = (u8*)kmalloc(total ? total : 1);
+    if (!tmp) return -1;
+    if (d && size) memcpy(tmp, d, size);
+    if ((u32)off > size) memset(tmp + size, 0, (u32)off - size);  /* 稀疏洞 */
+    if (n) memcpy(tmp + off, buf, (u32)n);
+    int rc = vfs_write_file(path, tmp, total);
+    kfree(tmp);
+    return rc == 0 ? n : -1;
+}
+
+/* ---- 鼠标指针样式 ---- */
+void k_mouse_set_style(int style) { mouse_set_style(style); }
+int  k_mouse_style(void)          { return mouse_style(); }

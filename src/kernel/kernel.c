@@ -12,6 +12,7 @@
 #include "fs/tinyfs.h"
 #include "mbr.h"
 #include "process.h"
+#include "task.h"
 #include "shell.h"
 #include "install.h"
 #include "user.h"
@@ -141,6 +142,12 @@ void kernel_main(u32 mb_info) {
     kprintf("[boot] PIT timer 100Hz ready\n");
 
     proc_init();
+
+    /* 多进程任务系统：必须排在 idt_init / pit_init 之后（int $0x50 上下文
+     * 切换与看门狗都依赖它们）。少了这一句，g_sched_on 恒为 0，sched_run
+     * 直接返回，所有派生的 worker 任务永远拿不到 CPU —— 表现就是文件管理
+     * 器的任务卡在 "run" 永不完成。 */
+    task_system_init();
 
     /* 网络配置：装过系统的磁盘上会有 /etc/net.conf，先应用它再起网卡，
      * 这样"安装向导里手动填的 IP"开机就生效。 */

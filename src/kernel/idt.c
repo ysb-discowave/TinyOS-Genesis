@@ -3,8 +3,12 @@
 #include "vga.h"
 #include "console.h"
 #include "libc.h"
+#include "task.h"
 
-#define IDT_ENTRIES 48
+/* 向量表容量：0..31 CPU 异常 + 32..47 IRQ + 0x50 任务切换软中断。
+ * 任务切换软中断（TASK_YIELD_VEC=0x50）也占用一个 IDT 条目，
+ * 表容量必须 > 0x50，否则 int $0x50 会读到表外垃圾 → 三重故障。 */
+#define IDT_ENTRIES 128
 
 typedef struct {
     u16 offset_low;
@@ -87,13 +91,21 @@ void idt_init(void) {
         .base  = (u32)idt
     };
     pic_remap();
-    __asm__ volatile("lidt %0" :: "m"(idtp));
+    __asm__ volatile("lidtl %0" :: "m"(idtp));
     __asm__ volatile("sti");
 }
 
 void isr_handler(regs_t *r) {
     if (r->int_no < 32) {
-        /* CPU 异常：致命 */
+        /* CPU 异常。多进程系统下：异常发生在任务里只杀任务，不拖垮内核；
+         * 发生在内核上下文（无任务运行）才是致命错误。 */
+        if (task_sched_enabled() && task_current_pid() != 0) {
+            task_note_fault(r->int_no, r->eip);
+            kprintf("[task] pid %d fault #%d (err=%x) eip=%x -- task killed, kernel survives\n",
+                    task_current_pid(), r->int_no, r->err, r->eip);
+            task_force_switch();     /* 让 idt.asm 尾部把上下文切回内核 */
+            return;                  /* 故障任务的帧已保存但永不再恢复 */
+        }
         vga_setcolor(0x0F, 0x04);
         kprintf("TinyOS: fatal exception #%d (err=%x) eip=%x cs=%x eflags=%x\n",
                 r->int_no, r->err, r->eip, r->cs, r->eflags);
@@ -129,7 +141,9 @@ void isr_handler(regs_t *r) {
             h(r);
         }
     }
-    /* EOI */
-    if (irq >= 8) outb(0xA0, 0x20);
-    outb(0x20, 0x20);
+    /* EOI：只对真实 IRQ（32..47）发；0x50 任务切换软中断不发 */
+    if (irq < 16) {
+        if (irq >= 8) outb(0xA0, 0x20);
+        outb(0x20, 0x20);
+    }
 }

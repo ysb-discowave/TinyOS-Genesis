@@ -58,6 +58,11 @@ PROGRAMS = [
     ("edit.c",      "EDIT",       "c",     []),
     # 系统自带的 MiniC 编译器：`cc <src.mc> [-o out.TNCR]`
     ("cc.c",        "CC",         "c",     []),
+    # FW.TNCR：文件操作 worker 进程（图形文件管理器 fm.c 的干进程）。
+    # 收 FJOB 命令做 copy/move/delete/mkdir/touch，回报进度（FPRG）。
+    # 必须带 --reloc：TNCR 任务系统把它装载到独立槽位（0x02000000 起），
+    # 固定装载地址的映像会互相覆盖。
+    ("fw.c",        "FW",         "c",     ["--reloc"]),
 ]
 
 # NOTE: these two files are embedded in the romfs and shown on the VGA text
@@ -203,7 +208,8 @@ def main():
             print("  skipped (source missing): %s" % src)
             continue
         try:
-            tcc.build(sp, op, lang, 0, verbose=verbose)
+            tcc.build(sp, op, lang, 0, reloc=("--reloc" in extra),
+                      verbose=verbose)
             entries.append(("/bin/%s.TNCR" % name, open(op, "rb").read()))
             ok += 1
         except SystemExit as e:

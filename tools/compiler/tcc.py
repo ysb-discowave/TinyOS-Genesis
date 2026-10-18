@@ -45,6 +45,11 @@ STARTUP_LINK_ADDR = 0x01000000
 
 TNCR_F_GUI = 1 << 0
 TNCR_F_DESKTOP = 1 << 1
+TNCR_F_RELOC = 1 << 2
+
+# 双链接差分的第二基址增量：必须大于任何用户映像尺寸（TNCR_LOAD_MAX=512KB），
+# 保证两次链接的节布局除基址外完全一致。
+RELOC_DELTA = 0x00100000
 
 # --------------------------------------------------------------------------
 # 工具链定位：优先 zig（自带 clang+lld，单文件、跨平台），其次 clang
@@ -108,15 +113,17 @@ def find_toolchain():
     return (None, None)
 
 
-def compile_elf(kind, tool, src_path, out_elf, verbose=False):
-    """把源文件编译并链接为固定地址的 ELF32 可执行文件。"""
+def compile_elf(kind, tool, src_path, out_elf, base=None, verbose=False):
+    """把源文件编译并链接为固定地址的 ELF32 可执行文件。
+
+    base 非空时用改写基址后的临时链接脚本链接（双链接差分用）。"""
     is_cpp = src_path.lower().endswith((".cpp", ".cc", ".cxx"))
     if kind == "zig":
-        base = [tool, "c++" if is_cpp else "cc", "-target", "x86-freestanding"]
+        cmdbase = [tool, "c++" if is_cpp else "cc", "-target", "x86-freestanding"]
     else:
-        base = [tool + ("++" if is_cpp else ""), "--target=i686-elf"]
+        cmdbase = [tool + ("++" if is_cpp else ""), "--target=i686-elf"]
 
-    cmd = base + [
+    cmd = cmdbase + [
         # 用户程序同样跑在裸机上（无 SSE 上下文），必须钉住 CPU 基线，
         # 否则 O2 自动向量化会生成 movaps/xmm 指令导致 #UD。
         "-mcpu=i686", "-mgeneral-regs-only",
@@ -130,8 +137,22 @@ def compile_elf(kind, tool, src_path, out_elf, verbose=False):
         cmd += ["-nostdinc"]
     if is_cpp:
         cmd += ["-fno-exceptions", "-fno-rtti"]
+
+    ld_script = os.path.join(HERE, "user.ld")
+    tmp_script = None
+    if base is not None:
+        # 链接脚本写死了 `. = 0x01000000;`，按基址改写出一份临时脚本。
+        text = open(ld_script, "r", encoding="utf-8").read()
+        new_text = text.replace(". = 0x01000000;", ". = 0x%08X;" % base)
+        if new_text == text:
+            raise SystemExit("user.ld 里找不到 `. = 0x01000000;`，无法按基址链接")
+        tmpdir_ld = tempfile.mkdtemp(prefix="tcc_ld_")
+        tmp_script = os.path.join(tmpdir_ld, "user.ld")
+        open(tmp_script, "w", encoding="utf-8").write(new_text)
+        ld_script = tmp_script
+
     cmd += [
-        "-Wl,-T," + os.path.join(HERE, "user.ld"),
+        "-Wl,-T," + ld_script,
         # 关键：必须显式指定入口。ld.lld 不采信链接脚本里的 ENTRY()，
         # 而它默认开启 --gc-sections；找不到入口符号(_start)时会把
         # .text/.rodata 全部当作不可达回收，产出一个没有任何可装载段的空 ELF，
@@ -145,9 +166,15 @@ def compile_elf(kind, tool, src_path, out_elf, verbose=False):
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         sys.stderr.write(r.stdout + r.stderr)
-        raise SystemExit("编译失败（%s）" % " ".join(base[:2]))
+        raise SystemExit("编译失败（%s）" % " ".join(cmdbase[:2]))
     if r.stderr.strip() and verbose:
         sys.stderr.write(r.stderr)
+    if tmp_script:
+        try:
+            os.remove(tmp_script)
+            os.rmdir(os.path.dirname(tmp_script))
+        except OSError:
+            pass
 
 
 # --------------------------------------------------------------------------
@@ -216,10 +243,36 @@ def elf32_flatten(path):
     return base, entry - base, bytes(image)
 
 
-def pack_tncr(load_addr, entry_off, code, bss_size, flags):
+def pack_tncr(load_addr, entry_off, code, bss_size, flags, reloc=None):
+    """reloc = [offset, ...]（映像内偏移，该处 u32 需按新基址修补）。
+    非空时置 TNCR_F_RELOC 并在 payload 后附 [count][offsets...]。"""
+    if reloc:
+        flags |= TNCR_F_RELOC
+        tail = struct.pack("<I", len(reloc))
+        for off in reloc:
+            tail += struct.pack("<I", off)
+    else:
+        tail = b""
     hdr = (b"TNCR" +
            struct.pack("<IIIII", flags, load_addr, entry_off, len(code), bss_size))
-    return hdr + code
+    return hdr + code + tail
+
+
+def reloc_by_diff(img1, img2, delta):
+    """双链接差分：返回两次链接扁平映像中"随基址浮动"的 u32 偏移表。
+
+    两次链接必须同源码、同链接脚本、仅基址不同（布局逐字节一致），
+    因此 img2[off] == img1[off] + delta 的位置就是绝对地址引用。"""
+    if len(img1) != len(img2):
+        raise SystemExit("双链接映像长度不一致（%d vs %d）——链接布局不稳定"
+                         % (len(img1), len(img2)))
+    out = []
+    for off in range(0, len(img1) - 3):
+        v1 = struct.unpack_from("<I", img1, off)[0]
+        v2 = struct.unpack_from("<I", img2, off)[0]
+        if v2 - v1 == delta:
+            out.append(off)
+    return out
 
 
 # ==========================================================================
@@ -445,7 +498,7 @@ EXT_LANG = {".c": "c", ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp",
             ".tiny": "tiny", ".bas": "basic", ".basic": "basic", ".minic": "minic"}
 
 
-def build(src_arg, out, lang, flags, verbose=False):
+def build(src_arg, out, lang, flags, reloc=False, verbose=False):
     kind, tool = find_toolchain()
     if kind is None:
         raise SystemExit("找不到编译器：请安装 zig（推荐）或 clang，"
@@ -487,13 +540,24 @@ def build(src_arg, out, lang, flags, verbose=False):
         elf = os.path.join(tmpdir, "u.elf")
         compile_elf(kind, tool, src_path, elf, verbose=verbose)
         base, entry_off, image = elf32_flatten(elf)
-        blob = pack_tncr(base, entry_off, image, 0, flags)
+
+        reloc_tab = None
+        if reloc:
+            # 双链接差分拿重定位表：同一源码在 base+RELOC_DELTA 再链一次。
+            elf2 = os.path.join(tmpdir, "u2.elf")
+            compile_elf(kind, tool, src_path, elf2, base=base + RELOC_DELTA,
+                        verbose=verbose)
+            _b2, _e2, image2 = elf32_flatten(elf2)
+            reloc_tab = reloc_by_diff(image, image2, RELOC_DELTA)
+
+        blob = pack_tncr(base, entry_off, image, 0, flags, reloc_tab)
         open(out, "wb").write(blob)
         gname = os.path.basename(out)
-        print("  %-22s %6d 字节  load=0x%08X entry=+0x%X flags=%s"
+        print("  %-22s %6d 字节  load=0x%08X entry=+0x%X flags=%s%s"
               % (gname, len(blob), base, entry_off,
                  ("GUI " if flags & TNCR_F_GUI else "") +
-                 ("DESKTOP" if flags & TNCR_F_DESKTOP else "") or "-"))
+                 ("DESKTOP" if flags & TNCR_F_DESKTOP else "") or "-",
+                 ("  reloc=%d" % len(reloc_tab)) if reloc_tab else ""))
         return True
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
@@ -508,6 +572,7 @@ def main():
     out = None
     lang = None
     flags = 0
+    reloc = False
     verbose = False
     i = 1
     while i < len(args):
@@ -520,6 +585,8 @@ def main():
             flags |= TNCR_F_GUI; i += 1
         elif a == "--desktop":
             flags |= TNCR_F_DESKTOP; i += 1
+        elif a == "--reloc":
+            reloc = True; i += 1
         elif a in ("-v", "--verbose"):
             verbose = True; i += 1
         else:
@@ -527,7 +594,7 @@ def main():
     if out is None:
         base = "DESKTOP" if src == "desktop" else os.path.splitext(os.path.basename(src))[0]
         out = base + ".TNCR"
-    build(src, out, lang, flags, verbose)
+    build(src, out, lang, flags, reloc=reloc, verbose=verbose)
     return 0
 
 

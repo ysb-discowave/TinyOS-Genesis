@@ -358,9 +358,24 @@ static void ser_hex8(u8 v) {
     serial_putc(d[v & 0xF]);
 }
 
+static void ser_dec(int v) {
+    char b[12];
+    int n = 0;
+    if (v < 0) { serial_putc('-'); v = -v; }
+    if (v == 0) { serial_putc('0'); return; }
+    while (v > 0 && n < 11) { b[n++] = (char)('0' + v % 10); v /= 10; }
+    while (n > 0) serial_putc(b[--n]);
+}
+
 void shell_shot(void) {
     u16 *buf = vga_buffer();
-    serial_puts("\n[shot] begin 80x25\n");
+    int mx, my; u8 bt;
+    mouse_state(&mx, &my, &bt);
+    /* 头部带光标坐标：E2E 脚本据此把"以为的"鼠标位置校准成真实位置，
+     * 消除长链 relative 事件的累积漂移。 */
+    serial_puts("\n[shot] begin 80x25 cursor=");
+    ser_dec(mx); serial_putc(','); ser_dec(my);
+    serial_putc('\n');
     for (int y = 0; y < VGA_HEIGHT; y++) {
         serial_puts("T"); ser_hex8((u8)y); serial_putc('|');
         for (int x = 0; x < VGA_WIDTH; x++) {

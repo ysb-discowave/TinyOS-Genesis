@@ -161,6 +161,33 @@ typedef struct tinyos_api {
      * 返回，之后轮询直到对端回 SYN-ACK 完成三次握手（或超时）。
      * 返回 >=0 的句柄（与 sock_accept 同句柄空间），失败返回 -1。 */
     int  (*sock_connect)(u32 ip, u16 port, int timeout_ms);
+
+    /* ================================================================
+     * Genesis v0.2 多进程扩展（追加在末尾，旧 TNCR 不受影响）。
+     * 任务系统：多个独立工作进程 + IPC + 异常/重启管理。
+     * 必须与 kernel/include/api.h 完全一致。
+     * ================================================================ */
+    int  (*task_spawn)(const char *path);              /* 起一个 TNCR 任务，返回 pid */
+    int  (*task_spawn_arg)(const char *path, const char *arg);
+    int  (*task_self)(void);                           /* 自己的 pid；不在任务里返回 0 */
+    int  (*task_parent)(void);                         /* 父任务 pid；0 = 无 */
+    void (*task_exit)(int code);                       /* 结束自己（不返回） */
+    void (*task_yield)(void);                          /* 让出 CPU */
+    int  (*task_kill)(int pid);                        /* 终止指定任务 */
+    int  (*task_state_of)(int pid);                    /* task_state；-1 = 不存在 */
+    int  (*task_exit_code)(int pid);
+    int  (*task_fault_vec)(int pid);                   /* 0xFE=看门狗；其它=CPU 异常号 */
+    void (*task_set_respawn)(int pid, int on);         /* 异常退出自动重启 */
+    /* ---- IPC：定长消息信箱 ---- */
+    int  (*ipc_send)(int dst, const void *msg, int n); /* 0 = 成功 */
+    int  (*ipc_recv)(void *msg, int max, int *from, int timeout_ms);
+    int  (*ipc_pending)(int pid);
+    /* ---- 分块文件 I/O（大文件复制/进度回报用）---- */
+    int  (*fs_read_at)(const char *path, void *buf, int n, long off);
+    int  (*fs_write_at)(const char *path, const void *buf, int n, long off);
+    /* ---- 鼠标指针样式（0=反色 1=方块 2=箭头 3=十字 4=忙碌 5=文本）---- */
+    void (*mouse_set_style)(int style);
+    int  (*mouse_style)(void);
 } tinyos_api_t;
 
 /* 用户程序入口。
