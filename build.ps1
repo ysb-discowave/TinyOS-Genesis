@@ -505,8 +505,10 @@ if ($Run -or $Headless) {
 # 各个 .TNCR 由 tools/build_users.py 直接写到 tinyYY\tncr。
 $outDir = Join-Path $env:USERPROFILE "Desktop\tinyYY"
 if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir | Out-Null }
+# 注意：kernel.elf 实际落在 src\kernel.elf（上面的归档步骤），不是仓库根。
+# 早先在 $Root 下找它，Test-Path 静默失败，桌面副本会一直停留在旧版。
 foreach ($f in @($imgName, "kernel.elf")) {
-    $src = Join-Path $Root $f
+    $src = if ($f -eq "kernel.elf") { Join-Path $Root "src\kernel.elf" } else { Join-Path $Root $f }
     if (Test-Path $src) {
         Copy-Item $src (Join-Path $outDir $f) -Force
         Ok ("产物 -> " + (Join-Path $outDir $f))
